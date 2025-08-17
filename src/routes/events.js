@@ -86,20 +86,41 @@ module.exports = function(database, config, logger, upload) {
   // Delete event
   router.delete('/:eventId', async (req, res) => {
     try {
-      // Check if event has contacts
-      const contacts = await database.all('SELECT COUNT(*) as count FROM contacts WHERE event_id = ?', [req.params.eventId]);
+      const eventId = req.params.eventId;
+      const event = await database.getEvent(eventId);
       
-      if (contacts[0].count > 0) {
-        return res.status(400).json({ 
-          error: 'Cannot delete event with existing contacts. Export data first or use reset instead.' 
-        });
+      if (!event) {
+        return res.status(404).json({ error: 'Event not found' });
       }
 
-      await database.run('DELETE FROM events WHERE id = ?', [req.params.eventId]);
+      // Check if event has contacts
+      const contacts = await database.all('SELECT COUNT(*) as count FROM contacts WHERE event_id = ?', [eventId]);
       
-      logger.logEvent('event_deleted', { eventId: req.params.eventId });
+      if (contacts[0].count > 0) {
+        // Allow deletion but log a warning
+        logger.logEvent('event_deleted_with_contacts', { 
+          eventId: eventId, 
+          contactCount: contacts[0].count,
+          warning: 'Event deleted with existing contacts - data may be lost'
+        });
+        
+        // Delete all related data (contacts, credentials, etc.)
+        await database.run('DELETE FROM credentials WHERE event_id = ?', [eventId]);
+        await database.run('DELETE FROM contacts WHERE event_id = ?', [eventId]);
+        await database.run('DELETE FROM csv_imports WHERE event_id = ?', [eventId]);
+        await database.run('DELETE FROM exports WHERE event_id = ?', [eventId]);
+      }
+
+      // Delete the event
+      await database.run('DELETE FROM events WHERE id = ?', [eventId]);
       
-      res.json({ message: 'Event deleted successfully' });
+      logger.logEvent('event_deleted', { eventId: eventId, eventName: event.name });
+      
+      res.json({ 
+        message: 'Event deleted successfully', 
+        eventId: eventId,
+        warning: contacts[0].count > 0 ? `Deleted ${contacts[0].count} contacts and related data` : null
+      });
     } catch (error) {
       logger.error('Failed to delete event', { error: error.message, eventId: req.params.eventId });
       res.status(500).json({ error: 'Failed to delete event' });
@@ -312,6 +333,73 @@ module.exports = function(database, config, logger, upload) {
         eventId: req.params.eventId 
       });
       res.status(500).json({ error: 'Failed to get working copy info' });
+    }
+  });
+
+  // End event (set status to ended)
+  router.put('/:eventId/end', async (req, res) => {
+    try {
+      const eventId = req.params.eventId;
+      const event = await database.getEvent(eventId);
+      
+      if (!event) {
+        return res.status(404).json({ error: 'Event not found' });
+      }
+
+      // Update event status to ended
+      await database.run('UPDATE events SET status = ? WHERE id = ?', ['ended', eventId]);
+      
+      logger.logEvent('event_ended', { 
+        eventId, 
+        eventName: event.name 
+      });
+      
+      res.json({ 
+        message: 'Event ended successfully',
+        eventId: eventId,
+        status: 'ended'
+      });
+    } catch (error) {
+      logger.error('Failed to end event', { 
+        error: error.message, 
+        eventId: req.params.eventId 
+      });
+      res.status(500).json({ error: 'Failed to end event' });
+    }
+  });
+
+  // Resume event (set status to active)
+  router.put('/:eventId/resume', async (req, res) => {
+    try {
+      const eventId = req.params.eventId;
+      const event = await database.getEvent(eventId);
+      
+      if (!event) {
+        return res.status(404).json({ error: 'Event not found' });
+      }
+
+      // Set all other events to ended first (only one active event at a time)
+      await database.run('UPDATE events SET status = ? WHERE status = ?', ['ended', 'active']);
+      
+      // Set this event to active
+      await database.run('UPDATE events SET status = ? WHERE id = ?', ['active', eventId]);
+      
+      logger.logEvent('event_resumed', { 
+        eventId, 
+        eventName: event.name 
+      });
+      
+      res.json({ 
+        message: 'Event resumed successfully',
+        eventId: eventId,
+        status: 'active'
+      });
+    } catch (error) {
+      logger.error('Failed to resume event', { 
+        error: error.message, 
+        eventId: req.params.eventId 
+      });
+      res.status(500).json({ error: 'Failed to resume event' });
     }
   });
 

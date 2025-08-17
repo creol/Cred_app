@@ -93,9 +93,9 @@ app.use('/api/printing', printingRoutes(database, config, logger));
 app.use('/api/exports', exportRoutes(database, config, logger));
 
 // Serve the main application
-app.get('*', (req, res) => {
-  res.sendFile(path.join(__dirname, 'public', 'index.html'));
-});
+// app.get('*', (req, res) => {
+//   res.sendFile(path.join(__dirname, 'public', 'index.html'));
+// });
 
 // Initialize database and start server
 async function startServer() {

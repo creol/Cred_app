@@ -21,6 +21,94 @@ function setupEventListeners() {
         }, 250);
     });
 
+    // Create Event button
+    const createEventBtn = document.getElementById('createEventBtn');
+    if (createEventBtn) {
+        createEventBtn.addEventListener('click', createEvent);
+    }
+
+    // New Event button
+    const newEventBtn = document.getElementById('newEventBtn');
+    if (newEventBtn) {
+        newEventBtn.addEventListener('click', showEventSetup);
+    }
+
+    // End Event button
+    const endEventBtn = document.getElementById('endEventBtn');
+    if (endEventBtn) {
+        endEventBtn.addEventListener('click', endCurrentEvent);
+    }
+
+    // Reset Event button
+    const resetEventBtn = document.getElementById('resetEventBtn');
+    if (resetEventBtn) {
+        resetEventBtn.addEventListener('click', () => {
+            if (currentEvent) {
+                resetEvent(currentEvent.id, currentEvent.name);
+            }
+        });
+    }
+
+    // Show Templates button
+    const showTemplatesBtn = document.getElementById('showTemplatesBtn');
+    if (showTemplatesBtn) {
+        showTemplatesBtn.addEventListener('click', showTemplates);
+    }
+
+    // Export Data button
+    const exportDataBtn = document.getElementById('exportDataBtn');
+    if (exportDataBtn) {
+        exportDataBtn.addEventListener('click', exportData);
+    }
+
+    // Print Stats button
+    const printStatsBtn = document.getElementById('printStatsBtn');
+    if (printStatsBtn) {
+        printStatsBtn.addEventListener('click', printStats);
+    }
+
+    // Clear Search button
+    const clearSearchBtn = document.getElementById('clearSearchBtn');
+    if (clearSearchBtn) {
+        clearSearchBtn.addEventListener('click', clearSearch);
+    }
+
+    // Show Manual Add button
+    const showManualAddBtn = document.getElementById('showManualAddBtn');
+    if (showManualAddBtn) {
+        showManualAddBtn.addEventListener('click', showManualAdd);
+    }
+
+    // Print Credential button
+    const printBtn = document.getElementById('printBtn');
+    if (printBtn) {
+        printBtn.addEventListener('click', printCredential);
+    }
+
+    // Un-Credential button
+    const unCredentialBtn = document.getElementById('unCredentialBtn');
+    if (unCredentialBtn) {
+        unCredentialBtn.addEventListener('click', unCredential);
+    }
+
+    // Save Contact button
+    const saveContactBtn = document.getElementById('saveContactBtn');
+    if (saveContactBtn) {
+        saveContactBtn.addEventListener('click', saveContact);
+    }
+
+    // Show Template Editor button
+    const showTemplateEditorBtn = document.getElementById('showTemplateEditorBtn');
+    if (showTemplateEditorBtn) {
+        showTemplateEditorBtn.addEventListener('click', showTemplateEditor);
+    }
+
+    // Import Template button
+    const importTemplateBtn = document.getElementById('importTemplateBtn');
+    if (importTemplateBtn) {
+        importTemplateBtn.addEventListener('click', importTemplate);
+    }
+
     // Keyboard shortcuts
     document.addEventListener('keydown', function(e) {
         if (e.key === '/' && !e.target.matches('input, textarea')) {
@@ -40,9 +128,48 @@ async function loadEvents() {
         const events = await response.json();
         
         if (events.length > 0) {
-            currentEvent = events[0];
+            // Find the active event (only events with status 'active')
+            const activeEvent = events.find(event => event.status === 'active');
+            
+            if (activeEvent) {
+                // We have an active event
+                currentEvent = activeEvent;
+                updateEventDisplay();
+                loadStatistics();
+                
+                // Show event history for other events
+                const otherEvents = events.filter(event => event.id !== activeEvent.id);
+                if (otherEvents.length > 0) {
+                    showEventHistory(events);
+                } else {
+                    // Hide event history section if no other events
+                    const historySection = document.getElementById('eventHistorySection');
+                    if (historySection) {
+                        historySection.style.display = 'none';
+                    }
+                }
+                         } else {
+                 // No active events - show the most recent ended event as current
+                 const mostRecentEvent = events.sort((a, b) => new Date(b.date) - new Date(a.date))[0];
+                 currentEvent = mostRecentEvent;
+                 updateEventDisplay();
+                 loadStatistics();
+                 
+                 // Always show event history when no active events
+                 showEventHistory(events);
+             }
+        } else {
+            // No events - clear everything
+            currentEvent = null;
             updateEventDisplay();
-            loadStatistics();
+            clearSearch();
+            hideContactPanel();
+            
+            // Hide event history
+            const historySection = document.getElementById('eventHistorySection');
+            if (historySection) {
+                historySection.style.display = 'none';
+            }
         }
     } catch (error) {
         console.error('Failed to load events:', error);
@@ -51,12 +178,241 @@ async function loadEvents() {
 
 // Update event display
 function updateEventDisplay() {
-    if (currentEvent) {
+    const newEventBtn = document.getElementById('newEventBtn');
+    const endEventBtn = document.getElementById('endEventBtn');
+    const resetEventBtn = document.getElementById('resetEventBtn');
+    
+    if (currentEvent && currentEvent.status === 'active') {
+        // Event is running - show End Event and Reset buttons
         document.getElementById('eventName').textContent = currentEvent.name;
         document.getElementById('eventDate').textContent = new Date(currentEvent.date).toLocaleDateString();
+        newEventBtn.style.display = 'none';
+        endEventBtn.style.display = 'block';
+        resetEventBtn.style.display = 'block';
+    } else if (currentEvent && currentEvent.status === 'ended') {
+        // Event exists but is ended - show Resume Event button and New Event button
+        document.getElementById('eventName').textContent = `${currentEvent.name} (Ended)`;
+        document.getElementById('eventDate').textContent = new Date(currentEvent.date).toLocaleDateString();
+        newEventBtn.innerHTML = '<i class="fas fa-plus"></i> New Event';
+        newEventBtn.style.display = 'block';
+        endEventBtn.style.display = 'none';
+        resetEventBtn.style.display = 'none';
     } else {
+        // No event - show New Event button
         document.getElementById('eventName').textContent = 'No Event Selected';
         document.getElementById('eventDate').textContent = '';
+        newEventBtn.innerHTML = '<i class="fas fa-plus"></i> New Event';
+        newEventBtn.style.display = 'block';
+        endEventBtn.style.display = 'none';
+        resetEventBtn.style.display = 'none';
+    }
+}
+
+// Show event history
+function showEventHistory(events) {
+    const historySection = document.getElementById('eventHistorySection');
+    const historyDiv = document.getElementById('eventHistory');
+    
+    // Always show event history if there are events
+    if (events.length === 0) {
+        historySection.style.display = 'none';
+        return;
+    }
+    
+    // If there's only one event and it's ended, show it in history
+    if (events.length === 1 && events[0].status === 'ended') {
+        const event = events[0];
+        const historyHtml = `
+            <div class="card mb-2">
+                <div class="card-body p-2">
+                    <div class="d-flex justify-content-between align-items-center">
+                        <div>
+                            <h6 class="mb-1">${event.name} (Ended)</h6>
+                            <small class="text-muted">${new Date(event.date).toLocaleDateString()}</small>
+                        </div>
+                        <div class="btn-group" role="group">
+                            <button class="btn btn-sm btn-outline-primary" onclick="resumeEvent('${event.id}')">
+                                <i class="fas fa-play"></i> Resume
+                            </button>
+                            <button class="btn btn-sm btn-outline-warning" onclick="resetEvent('${event.id}', '${event.name}')">
+                                <i class="fas fa-undo"></i> Reset
+                            </button>
+                            <button class="btn btn-sm btn-outline-danger" onclick="deleteEvent('${event.id}', '${event.name}')">
+                                <i class="fas fa-trash"></i> Delete
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        `;
+        historyDiv.innerHTML = historyHtml;
+        historySection.style.display = 'block';
+        return;
+    }
+    
+    // For multiple events, filter out the current event and show others
+    const otherEvents = events.filter(event => event.id !== currentEvent.id);
+    
+    if (otherEvents.length === 0) {
+        historySection.style.display = 'none';
+        return;
+    }
+    
+    const historyHtml = otherEvents.map(event => `
+        <div class="card mb-2">
+            <div class="card-body p-2">
+                <div class="d-flex justify-content-between align-items-center">
+                    <div>
+                        <h6 class="mb-1">${event.name}${event.status === 'ended' ? ' (Ended)' : ''}</h6>
+                        <small class="text-muted">${new Date(event.date).toLocaleDateString()}</small>
+                    </div>
+                    <div class="btn-group" role="group">
+                        <button class="btn btn-sm btn-outline-primary" onclick="resumeEvent('${event.id}')">
+                            <i class="fas fa-play"></i> Resume
+                        </button>
+                        <button class="btn btn-sm btn-outline-warning" onclick="resetEvent('${event.id}', '${event.name}')">
+                            <i class="fas fa-undo"></i> Reset
+                        </button>
+                        <button class="btn btn-sm btn-outline-danger" onclick="deleteEvent('${event.id}', '${event.name}')">
+                            <i class="fas fa-trash"></i> Delete
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    `).join('');
+    
+    historyDiv.innerHTML = historyHtml;
+    historySection.style.display = 'block';
+}
+
+// End current event
+async function endCurrentEvent() {
+    if (!currentEvent) return;
+    
+    if (!confirm(`Are you sure you want to end the event "${currentEvent.name}"? You can resume it later.`)) {
+        return;
+    }
+    
+    try {
+        const response = await fetch(`/api/events/${currentEvent.id}/end`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ status: 'ended' })
+        });
+        
+        if (response.ok) {
+            showSuccess('Event ended successfully!');
+            
+            // Reload events to get updated status and refresh the display
+            await loadEvents();
+            
+            // Clear search and hide contact panel
+            clearSearch();
+            hideContactPanel();
+        } else {
+            const result = await response.json();
+            showError(result.error || 'Failed to end event.');
+        }
+    } catch (error) {
+        console.error('Failed to end event:', error);
+        showError('Failed to end event. Please try again.');
+    }
+}
+
+// Reset an event (clear all contacts and credentials)
+async function resetEvent(eventId, eventName) {
+    const confirmation = prompt(`To reset the event "${eventName}", please type RESET in all caps:`);
+    
+    if (confirmation !== 'RESET') {
+        if (confirmation !== null) { // User didn't cancel
+            showError('Reset cancelled. You must type RESET exactly.');
+        }
+        return;
+    }
+    
+    if (!confirm(`Are you sure you want to reset the event "${eventName}"? This will clear all contacts and credentials but keep the event. This action cannot be undone.`)) {
+        return;
+    }
+    
+    try {
+        const response = await fetch(`/api/events/${eventId}/reset`, {
+            method: 'POST'
+        });
+        
+        if (response.ok) {
+            showSuccess(`Event "${eventName}" reset successfully!`);
+            // Reload events to update the display
+            await loadEvents();
+        } else {
+            const result = await response.json();
+            showError(result.error || 'Failed to reset event.');
+        }
+    } catch (error) {
+        console.error('Failed to reset event:', error);
+        showError('Failed to reset event. Please try again.');
+    }
+}
+
+// Delete an event (requires typing DELETE)
+async function deleteEvent(eventId, eventName) {
+    const confirmation = prompt(`To delete the event "${eventName}", please type DELETE in all caps:`);
+    
+    if (confirmation !== 'DELETE') {
+        if (confirmation !== null) { // User didn't cancel
+            showError('Deletion cancelled. You must type DELETE exactly.');
+        }
+        return;
+    }
+    
+    if (!confirm(`Are you absolutely sure you want to permanently delete "${eventName}"? This will remove all contacts, credentials, and data associated with this event. This action cannot be undone.`)) {
+        return;
+    }
+    
+    try {
+        const response = await fetch(`/api/events/${eventId}`, {
+            method: 'DELETE'
+        });
+        
+        if (response.ok) {
+            const result = await response.json();
+            let message = `Event "${eventName}" deleted successfully!`;
+            if (result.warning) {
+                message += `\n\n⚠️ Warning: ${result.warning}`;
+            }
+            showSuccess(message);
+            // Reload events to update the display
+            await loadEvents();
+        } else {
+            const result = await response.json();
+            showError(result.error || 'Failed to delete event.');
+        }
+    } catch (error) {
+        console.error('Failed to delete event:', error);
+        showError('Failed to delete event. Please try again.');
+    }
+}
+
+// Resume a previous event
+async function resumeEvent(eventId) {
+    try {
+        const response = await fetch(`/api/events/${eventId}/resume`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ status: 'active' })
+        });
+        
+        if (response.ok) {
+            // Load the resumed event (this will handle setting the new active event)
+            await loadEvents();
+            showSuccess('Event resumed successfully!');
+        } else {
+            const result = await response.json();
+            showError(result.error || 'Failed to resume event.');
+        }
+    } catch (error) {
+        console.error('Failed to resume event:', error);
+        showError('Failed to resume event. Please try again.');
     }
 }
 
@@ -90,6 +446,7 @@ async function searchContacts() {
         const contacts = await response.json();
         
         displaySearchResults(contacts);
+        showSearchResults(); // Show search results when performing new search
     } catch (error) {
         console.error('Search failed:', error);
         showError('Search failed. Please try again.');
@@ -145,10 +502,21 @@ function clearSearchResults() {
     `;
 }
 
+// Hide search results (when contact is selected)
+function hideSearchResults() {
+    document.getElementById('searchResults').style.display = 'none';
+}
+
+// Show search results (when clearing search or after printing)
+function showSearchResults() {
+    document.getElementById('searchResults').style.display = 'block';
+}
+
 // Clear search
 function clearSearch() {
     document.getElementById('searchInput').value = '';
     clearSearchResults();
+    showSearchResults(); // Show search results again
     hideContactPanel();
 }
 
@@ -156,22 +524,41 @@ function clearSearch() {
 async function selectContact(contactId) {
     try {
         const response = await fetch(`/api/contacts/${contactId}`);
+        if (!response.ok) {
+            throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+        }
+        
         const contact = await response.json();
         
         currentContact = contact;
         displayContact(contact);
-        generateLabelPreview(contact);
+        
+        // Generate label preview (but don't fail if it doesn't work)
+        try {
+            await generateLabelPreview(contact);
+        } catch (previewError) {
+            console.error('Label preview failed:', previewError);
+            // Continue with contact display even if preview fails
+        }
+        
+        // Hide search results when contact is selected
+        hideSearchResults();
         
         // Focus search input for next search
         document.getElementById('searchInput').focus();
     } catch (error) {
         console.error('Failed to load contact:', error);
-        showError('Failed to load contact details.');
+        showError(`Failed to load contact details: ${error.message}`);
     }
 }
 
 // Display contact
 function displayContact(contact) {
+    // Debug: Log the contact data to see what fields are available
+    console.log('Displaying contact:', contact);
+    console.log('Contact ZIP field:', contact.zip);
+    console.log('Contact custom_fields:', contact.custom_fields);
+    
     // Show contact panel
     document.getElementById('contactPanel').style.display = 'block';
     
@@ -190,7 +577,7 @@ function displayContact(contact) {
         document.getElementById('unCredentialBtn').style.display = 'none';
     }
     
-    // Fill form fields
+    // Fill standard form fields
     document.getElementById('firstName').value = contact.first_name || '';
     document.getElementById('lastName').value = contact.last_name || '';
     document.getElementById('birthDate').value = contact.birth_date || '';
@@ -200,6 +587,47 @@ function displayContact(contact) {
     document.getElementById('state').value = contact.state || '';
     document.getElementById('zip').value = contact.zip || '';
     document.getElementById('email').value = contact.email || '';
+    
+    // Also try to load from custom fields if standard fields are empty
+    if (contact.custom_fields) {
+        try {
+            const customFields = JSON.parse(contact.custom_fields);
+            console.log('Custom fields for form:', customFields); // Debug log
+            
+            if (!contact.phone && customFields.phone) {
+                document.getElementById('phone').value = customFields.phone;
+            }
+            if (!contact.phone && customFields['Phone']) {
+                document.getElementById('phone').value = customFields['Phone'];
+            }
+            if (!contact.phone && customFields.mobile) {
+                document.getElementById('phone').value = customFields.mobile;
+            }
+            if (!contact.phone && customFields['Mobile']) {
+                document.getElementById('phone').value = customFields['Mobile'];
+            }
+            if (!contact.zip && customFields.zip) {
+                document.getElementById('zip').value = customFields.zip;
+            }
+            if (!contact.zip && customFields['ZIP']) {
+                document.getElementById('zip').value = customFields['ZIP'];
+            }
+            if (!contact.zip && customFields['Zip Code']) {
+                document.getElementById('zip').value = customFields['Zip Code'];
+            }
+            if (!contact.zip && customFields['zip']) {
+                document.getElementById('zip').value = customFields['zip'];
+            }
+            if (!contact.zip && customFields['Zip']) {
+                document.getElementById('zip').value = customFields['Zip'];
+            }
+        } catch (e) {
+            console.error('Failed to parse custom fields for form:', e);
+        }
+    }
+    
+    // Display all CSV fields including custom fields
+    displayAllContactFields(contact);
 }
 
 // Hide contact panel
@@ -208,47 +636,118 @@ function hideContactPanel() {
     currentContact = null;
 }
 
-// Generate label preview
-async function generateLabelPreview(contact) {
-    if (!currentTemplate) {
-        // Load default template
+// Display all contact fields including custom fields from CSV
+function displayAllContactFields(contact) {
+    // Parse custom fields if they exist
+    let allFields = {};
+    
+    // Add standard fields
+    if (contact.first_name) allFields['First Name'] = contact.first_name;
+    if (contact.last_name) allFields['Last Name'] = contact.last_name;
+    if (contact.middle_name) allFields['Middle Name'] = contact.middle_name;
+    if (contact.birth_date) allFields['Birth Date'] = contact.birth_date;
+    if (contact.address) allFields['Address'] = contact.address;
+    if (contact.city) allFields['City'] = contact.city;
+    if (contact.state) allFields['State'] = contact.state;
+    if (contact.zip) allFields['ZIP'] = contact.zip;
+    if (contact.phone) allFields['Phone'] = contact.phone;
+    if (contact.email) allFields['Email'] = contact.email;
+    
+    // Add custom fields from CSV
+    if (contact.custom_fields) {
         try {
-            const response = await fetch('/api/templates/default');
-            currentTemplate = await response.json();
-        } catch (error) {
-            console.error('Failed to load default template:', error);
-            return;
+            const customFields = JSON.parse(contact.custom_fields);
+            Object.assign(allFields, customFields);
+        } catch (e) {
+            console.error('Failed to parse custom fields:', e);
         }
     }
     
-    // Create preview data
-    const previewData = {
-        firstName: contact.first_name,
-        lastName: contact.last_name,
-        middleName: contact.middle_name,
-        birthDate: contact.birth_date,
-        address: contact.address,
-        city: contact.city,
-        state: contact.state,
-        zip: contact.zip,
-        phone: contact.phone,
-        email: contact.email,
-        eventName: currentEvent.name,
-        eventDate: currentEvent.date
-    };
+    // Create a comprehensive field display
+    const fieldDisplay = document.createElement('div');
+    fieldDisplay.className = 'all-fields-display mb-3 p-3 border rounded bg-light';
+    fieldDisplay.innerHTML = '<h6 class="mb-3 text-primary">Contact Details</h6>';
     
-    // Generate preview
+    const fieldsList = document.createElement('div');
+    fieldsList.className = 'row';
+    
+    Object.entries(allFields).forEach(([key, value]) => {
+        if (value && value.toString().trim() !== '') {
+            const fieldDiv = document.createElement('div');
+            fieldDiv.className = 'col-md-6 mb-2';
+            fieldDiv.innerHTML = `
+                <label class="form-label text-muted"><small>${key}</small></label>
+                <input type="text" class="form-control form-control-sm" value="${value}" readonly>
+            `;
+            fieldsList.appendChild(fieldDiv);
+        }
+    });
+    
+    fieldDisplay.appendChild(fieldsList);
+    
+    // Remove existing fields display if it exists
+    const existingAllFields = document.querySelector('.all-fields-display');
+    if (existingAllFields) {
+        existingAllFields.remove();
+    }
+    
+    // Insert in the center area, right under the search results
+    const searchResults = document.getElementById('searchResults');
+    if (searchResults && searchResults.parentNode) {
+        const centerArea = searchResults.parentNode;
+        // Insert after the search results div
+        centerArea.insertBefore(fieldDisplay, searchResults.nextSibling);
+    }
+}
+
+// Generate label preview
+async function generateLabelPreview(contact) {
     try {
+        // Load default template if not already loaded
+        if (!currentTemplate) {
+            const response = await fetch('/api/templates/default');
+            if (response.ok) {
+                currentTemplate = await response.json();
+            } else {
+                console.error('No default template available');
+                displayLabelPreview({ preview: { elements: [] } });
+                return;
+            }
+        }
+        
+        // Create preview data
+        const previewData = {
+            firstName: contact.first_name,
+            lastName: contact.last_name,
+            middleName: contact.middle_name,
+            birthDate: contact.birth_date,
+            address: contact.address,
+            city: contact.city,
+            state: contact.state,
+            zip: contact.zip,
+            phone: contact.phone,
+            email: contact.email,
+            eventName: currentEvent.name,
+            eventDate: currentEvent.date
+        };
+        
+        // Generate preview
         const response = await fetch(`/api/templates/${currentTemplate.id}/preview`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ sampleData: previewData })
         });
         
-        const preview = await response.json();
-        displayLabelPreview(preview);
+        if (response.ok) {
+            const preview = await response.json();
+            displayLabelPreview(preview);
+        } else {
+            console.error('Template preview failed');
+            displayLabelPreview({ preview: { elements: [] } });
+        }
     } catch (error) {
         console.error('Failed to generate preview:', error);
+        // Don't fail the entire contact display if preview fails
         displayLabelPreview({ preview: { elements: [] } });
     }
 }
@@ -312,8 +811,9 @@ async function printCredential() {
             // Refresh statistics
             loadStatistics();
             
-            // Clear search and focus for next person
-            clearSearch();
+            // Show search results again and focus for next person
+            showSearchResults();
+            document.getElementById('searchInput').focus();
         } else {
             showError(result.error || 'Printing failed.');
         }
@@ -435,6 +935,13 @@ async function createEvent() {
         // Update display
         updateEventDisplay();
         loadStatistics();
+        
+        // Refresh event history if there are multiple events
+        const eventsResponse = await fetch('/api/events');
+        const allEvents = await eventsResponse.json();
+        if (allEvents.length > 1) {
+            showEventHistory(allEvents);
+        }
         
         // Close modal
         bootstrap.Modal.getInstance(document.getElementById('eventModal')).hide();

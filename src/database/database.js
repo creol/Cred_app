@@ -37,6 +37,7 @@ class Database {
         name TEXT NOT NULL,
         date TEXT NOT NULL,
         description TEXT,
+        status TEXT DEFAULT 'active',
         created_at TEXT NOT NULL,
         updated_at TEXT NOT NULL
       )`,
@@ -133,6 +134,9 @@ class Database {
       await this.run(table);
     }
 
+    // Run migrations for existing databases
+    await this.runMigrations();
+
     // Create indexes for performance
     const indexes = [
       'CREATE INDEX IF NOT EXISTS idx_contacts_event_id ON contacts(event_id)',
@@ -146,6 +150,29 @@ class Database {
 
     for (const index of indexes) {
       await this.run(index);
+    }
+    
+    // Create default template if none exists
+    await this.createDefaultTemplate();
+  }
+
+  // Run database migrations for existing databases
+  async runMigrations() {
+    try {
+      // Check if events table exists and has status column
+      const tableInfo = await this.all("PRAGMA table_info(events)");
+      const hasStatusColumn = tableInfo.some(col => col.name === 'status');
+      
+      if (!hasStatusColumn) {
+        console.log('🔄 Adding status column to events table...');
+        await this.run('ALTER TABLE events ADD COLUMN status TEXT DEFAULT "active"');
+        
+        // Set all existing events to 'active' status
+        await this.run('UPDATE events SET status = "active" WHERE status IS NULL');
+        console.log('✅ Status column added successfully');
+      }
+    } catch (error) {
+      console.error('Migration failed:', error);
     }
   }
 
@@ -191,16 +218,19 @@ class Database {
     const id = uuidv4();
     const now = moment().toISOString();
     
+    // Set all other events to ended first (only one active event at a time)
+    await this.run('UPDATE events SET status = ? WHERE status = ?', ['ended', 'active']);
+    
     const sql = `
-      INSERT INTO events (id, name, date, description, created_at, updated_at)
-      VALUES (?, ?, ?, ?, ?, ?)
+      INSERT INTO events (id, name, date, description, status, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?)
     `;
     
     await this.run(sql, [
-      id, eventData.name, eventData.date, eventData.description || '', now, now
+      id, eventData.name, eventData.date, eventData.description || '', 'active', now, now
     ]);
     
-    return { id, ...eventData, created_at: now, updated_at: now };
+    return { id, ...eventData, status: 'active', created_at: now, updated_at: now };
   }
 
   async getEvent(eventId) {
@@ -208,7 +238,7 @@ class Database {
   }
 
   async getAllEvents() {
-    return await this.all('SELECT * FROM events ORDER BY date DESC');
+    return await this.all('SELECT * FROM events ORDER BY CASE WHEN status = "active" THEN 0 ELSE 1 END, date DESC');
   }
 
   async updateEvent(eventId, eventData) {
@@ -236,6 +266,12 @@ class Database {
       const id = uuidv4();
       const now = moment().toISOString();
       
+      // Debug: Log the first contact to see field structure
+      if (i === 0) {
+        console.log('Sample contact data structure:', contact);
+        console.log('Available keys:', Object.keys(contact));
+      }
+      
       // Extract common fields
       const contactData = {
         id,
@@ -248,8 +284,8 @@ class Database {
         address: contact.address || contact['Address'] || contact['address'] || '',
         city: contact.city || contact['City'] || contact['city'] || '',
         state: contact.state || contact['State'] || contact['state'] || '',
-        zip: contact.zip || contact['ZIP'] || contact['zip'] || contact['Zip Code'] || '',
-        phone: contact.phone || contact['Phone'] || contact['phone'] || '',
+        zip: contact.zip || contact['ZIP'] || contact['zip'] || contact['Zip Code'] || contact['Zip'] || contact['zipcode'] || contact['ZIPCODE'] || '',
+        phone: contact.phone || contact['Phone'] || contact['phone'] || contact['mobile'] || contact['Mobile'] || contact['cell'] || contact['Cell'] || '',
         email: contact.email || contact['Email'] || contact['email'] || '',
         custom_fields: JSON.stringify(contact),
         created_at: now,
@@ -297,6 +333,96 @@ class Database {
 
   async getContact(contactId) {
     return await this.get('SELECT * FROM contacts WHERE id = ?', [contactId]);
+  }
+
+  async createDefaultTemplate() {
+    try {
+      // Check if any templates exist
+      const existingTemplate = await this.get('SELECT COUNT(*) as count FROM templates');
+      if (existingTemplate.count > 0) {
+        return; // Templates already exist
+      }
+
+      // Create default template
+      const defaultTemplate = {
+        id: 'default-template',
+        name: 'Default Credential',
+        description: 'Standard 4x6 fold-over credential template',
+        config: JSON.stringify({
+          width: 4,
+          height: 6,
+          foldOver: true,
+          elements: [
+            {
+              type: 'text',
+              id: 'name',
+              x: 0.5,
+              y: 0.5,
+              width: 3,
+              height: 0.75,
+              content: '{{firstName}} {{lastName}}',
+              fontSize: 24,
+              bold: true,
+              align: 'center'
+            },
+            {
+              type: 'text',
+              id: 'event',
+              x: 0.5,
+              y: 1.5,
+              width: 3,
+              height: 0.5,
+              content: '{{eventName}}',
+              fontSize: 16,
+              align: 'center'
+            },
+            {
+              type: 'text',
+              id: 'date',
+              x: 0.5,
+              y: 2.1,
+              width: 3,
+              height: 0.4,
+              content: '{{eventDate}}',
+              fontSize: 14,
+              align: 'center'
+            },
+            {
+              type: 'checkbox',
+              id: 'credential',
+              x: 1.5,
+              y: 2.8,
+              width: 0.3,
+              height: 0.3,
+              label: 'Credentialed'
+            }
+          ]
+        }),
+        is_default: 1,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString()
+      };
+
+      const sql = `
+        INSERT INTO templates (
+          id, name, description, config, is_default, created_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?)
+      `;
+
+      await this.run(sql, [
+        defaultTemplate.id,
+        defaultTemplate.name,
+        defaultTemplate.description,
+        defaultTemplate.config,
+        defaultTemplate.is_default,
+        defaultTemplate.created_at,
+        defaultTemplate.updated_at
+      ]);
+
+      console.log('✅ Created default template');
+    } catch (error) {
+      console.error('Failed to create default template:', error);
+    }
   }
 
   async updateContact(contactId, contactData) {
