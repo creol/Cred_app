@@ -127,7 +127,6 @@
 
                             <!-- Label Preview -->
                             <div class="label-preview p-3 mb-3 text-center">
-                                <h6>Label Preview</h6>
                                 <div id="labelPreview" class="border p-2">
                                     <small class="text-muted">Select a contact to see preview</small>
                                 </div>
@@ -183,7 +182,7 @@
                                 <!-- Action Buttons -->
                                 <div class="d-grid gap-2">
                                     <button type="button" class="btn btn-success" id="printBtn">
-                                        <i class="fas fa-print"></i> Print Credential
+                                        <i class="fas fa-print"></i> Confirm Credential and Print
                                     </button>
                                     <button type="button" class="btn btn-warning" id="unCredentialBtn" style="display: none;">
                                         <i class="fas fa-undo"></i> Un-Credential
@@ -367,7 +366,35 @@
         </div>
     </div>
 
+    <!-- PDF Preview Modal -->
+    <div class="modal fade" id="pdfPreviewModal" tabindex="-1">
+        <div class="modal-dialog modal-xl">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">PDF Preview</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="text-center mb-3">
+                        <button type="button" class="btn btn-primary" id="downloadPdfBtn">
+                            <i class="fas fa-download"></i> Download PDF
+                        </button>
+                        <button type="button" class="btn btn-success" id="printPdfBtn">
+                            <i class="fas fa-print"></i> Print
+                        </button>
+                    </div>
+                    <div id="pdfPreviewContainer" class="border rounded p-3" style="background: #f8f9fa; min-height: 400px;">
+                        <div id="pdfPreviewContent" class="text-center">
+                            <p class="text-muted">Generating PDF preview...</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
     <script src="js/app.js"></script>
 </body>
 </html>

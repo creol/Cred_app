@@ -343,7 +343,7 @@ async function endCurrentEvent() {
     }
 }
 
-// Reset an event (clear all contacts and credentials)
+// Reset an event (clear all credentials but keep contacts)
 async function resetEvent(eventId, eventName) {
     const confirmation = prompt(`To reset the event "${eventName}", please type RESET in all caps:`);
     
@@ -354,7 +354,7 @@ async function resetEvent(eventId, eventName) {
         return;
     }
     
-    if (!confirm(`Are you sure you want to reset the event "${eventName}"? This will clear all contacts and credentials but keep the event. This action cannot be undone.`)) {
+    if (!confirm(`Are you sure you want to reset the event "${eventName}"? This will keep all imported contacts but clear all credentials (un-credential everyone). This action cannot be undone.`)) {
         return;
     }
     
@@ -367,6 +367,11 @@ async function resetEvent(eventId, eventName) {
             showSuccess(`Event "${eventName}" reset successfully!`);
             // Reload events to update the display
             await loadEvents();
+            
+            // If a contact is currently selected, refresh its display to show updated credential status
+            if (currentContact) {
+                await selectContact(currentContact.id);
+            }
         } else {
             const result = await response.json();
             showError(result.error || 'Failed to reset event.');
@@ -793,13 +798,67 @@ function displayLabelPreview(preview) {
                     <input type="checkbox" ${element.checked ? 'checked' : ''} disabled>
                     <span>${element.label}</span>
                 </div>`;
+            } else if (element.type === 'image') {
+                previewHtml += `<div class="mb-1">
+                    <i class="fas fa-image"></i> [Image]
+                </div>`;
             }
         });
         previewHtml += '</div>';
+        
+        // Add a button to show detailed PDF preview
+        previewHtml += `
+            <div class="mt-2">
+                <button type="button" class="btn btn-sm btn-outline-primary" onclick="showDetailedPreview()">
+                    <i class="fas fa-eye"></i> Detailed Preview
+                </button>
+            </div>
+        `;
+        
         previewDiv.innerHTML = previewHtml;
     } else {
         previewDiv.innerHTML = '<small class="text-muted">Preview not available</small>';
     }
+}
+
+// Show detailed PDF preview for the current contact
+function showDetailedPreview() {
+    if (!currentContact || !currentTemplate) {
+        showError('No contact or template selected for preview');
+        return;
+    }
+    
+    // Create contact data for preview
+    const contactData = {
+        firstName: currentContact.first_name || '',
+        lastName: currentContact.last_name || '',
+        middleName: currentContact.middle_name || '',
+        birthDate: currentContact.birth_date || '',
+        address: currentContact.address || '',
+        city: currentContact.city || '',
+        state: currentContact.state || '',
+        zip: currentContact.zip || '',
+        phone: currentContact.phone || '',
+        email: currentContact.email || '',
+        eventName: currentEvent ? currentEvent.name : '',
+        eventDate: currentEvent ? currentEvent.date : ''
+    };
+    
+    // Generate PDF preview
+    const pdfBlob = generatePdf(currentTemplate, contactData);
+    
+    // Show PDF preview modal
+    const modal = new bootstrap.Modal(document.getElementById('pdfPreviewModal'));
+    modal.show();
+    
+    // Display the PDF
+    displayPdfPreview(pdfBlob);
+    
+    // Setup PDF modal buttons
+    setupPdfModalButtons();
+    
+    // Update modal title
+    document.querySelector('#pdfPreviewModal .modal-title').textContent = 'Label Preview';
 }
 
 // Print credential
@@ -814,6 +873,59 @@ async function printCredential() {
         const formData = new FormData(document.getElementById('contactForm'));
         const contactData = Object.fromEntries(formData.entries());
         
+        // Create contact data object for PDF generation
+        const pdfContactData = {
+            firstName: contactData.firstName || currentContact.first_name || '',
+            lastName: contactData.lastName || currentContact.last_name || '',
+            middleName: contactData.middleName || currentContact.middle_name || '',
+            birthDate: contactData.birthDate || currentContact.birth_date || '',
+            address: contactData.address || currentContact.address || '',
+            city: contactData.city || currentContact.city || '',
+            state: contactData.state || currentContact.state || '',
+            zip: contactData.zip || currentContact.zip || '',
+            phone: contactData.phone || currentContact.phone || '',
+            email: contactData.email || currentContact.email || '',
+            eventName: currentEvent.name || '',
+            eventDate: currentEvent.date || ''
+        };
+        
+        // Generate PDF for printing
+        const pdfBlob = generatePdf(currentTemplate, pdfContactData);
+        
+        // Show PDF preview modal for printing
+        showPdfPreviewForPrinting(pdfBlob, currentTemplate.name || 'Credential');
+        
+        // Mark as credentialed in the database
+        await markContactAsCredentialed();
+        
+    } catch (error) {
+        console.error('Printing failed:', error);
+        showError('Printing failed. Please try again.');
+    }
+}
+
+// Show PDF preview for printing credentials
+function showPdfPreviewForPrinting(pdfBlob, templateName) {
+    // Show the PDF preview modal
+    const modal = new bootstrap.Modal(document.getElementById('pdfPreviewModal'));
+    modal.show();
+    
+    // Display the PDF
+    displayPdfPreview(pdfBlob);
+    
+    // Setup PDF modal buttons
+    setupPdfModalButtons();
+    
+    // Update modal title
+    document.querySelector('#pdfPreviewModal .modal-title').textContent = 'Print Credential';
+    
+    // Show success message
+    showSuccess('Credential generated successfully! You can now print or download.');
+}
+
+// Mark contact as credentialed in the database
+async function markContactAsCredentialed() {
+    try {
         const response = await fetch('/api/printing/print-credential', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -821,31 +933,22 @@ async function printCredential() {
                 contactId: currentContact.id,
                 eventId: currentEvent.id,
                 templateId: currentTemplate.id,
-                contactData: contactData
+                contactData: {}
             })
         });
         
-        const result = await response.json();
-        
         if (response.ok) {
-            showSuccess('Credential printed successfully!');
-            
-            // Update contact status
+            // Update contact status locally
             currentContact.isCredentialed = true;
             displayContact(currentContact);
             
             // Refresh statistics
             loadStatistics();
-            
-            // Show search results again and focus for next person
-            showSearchResults();
-            document.getElementById('searchInput').focus();
         } else {
-            showError(result.error || 'Printing failed.');
+            console.warn('Failed to mark contact as credentialed in database');
         }
     } catch (error) {
-        console.error('Printing failed:', error);
-        showError('Printing failed. Please try again.');
+        console.warn('Failed to mark contact as credentialed:', error);
     }
 }
 
@@ -1014,6 +1117,38 @@ function showTemplates() {
     modal.show();
 }
 
+// Select a template for printing
+async function selectTemplate(templateId) {
+    try {
+        const response = await fetch(`/api/templates/${templateId}`);
+        if (response.ok) {
+            const template = await response.json();
+            currentTemplate = template;
+            
+            // Don't create a new event template - just select the existing one
+            // The event will use the selected template for printing
+            
+            showSuccess(`Template "${template.name}" selected successfully!`);
+            
+            // Close the templates modal
+            const modal = bootstrap.Modal.getInstance(document.getElementById('templatesModal'));
+            if (modal) {
+                modal.hide();
+            }
+            
+            // If a contact is currently selected, refresh the label preview with the new template
+            if (currentContact) {
+                await generateLabelPreview(currentContact);
+            }
+        } else {
+            showError('Failed to load template.');
+        }
+    } catch (error) {
+        console.error('Failed to select template:', error);
+        showError('Failed to select template.');
+    }
+}
+
 // Load templates
 async function loadTemplates() {
     try {
@@ -1022,15 +1157,22 @@ async function loadTemplates() {
         
         const templatesList = document.getElementById('templatesList');
         templatesList.innerHTML = templates.map(template => `
-            <div class="card mb-2">
+            <div class="card mb-2 ${currentTemplate && currentTemplate.id === template.id ? 'border-success' : ''}">
                 <div class="card-body">
                     <div class="d-flex justify-content-between align-items-center">
                         <div>
                             <h6 class="mb-1">${template.name}</h6>
                             <small class="text-muted">${template.description}</small>
+                            ${currentTemplate && currentTemplate.id === template.id ? '<br><small class="text-success"><i class="fas fa-check-circle"></i> Currently Selected</small>' : ''}
                         </div>
                         <div>
                             ${template.is_default ? '<span class="badge bg-primary">Default</span>' : ''}
+                            ${currentTemplate && currentTemplate.id === template.id ? 
+                                '<span class="badge bg-success">Selected</span>' : 
+                                `<button class="btn btn-sm btn-success" onclick="selectTemplate('${template.id}')" title="Select this template for printing">
+                                    <i class="fas fa-check"></i> Select
+                                </button>`
+                            }
                             <button class="btn btn-sm btn-outline-primary" onclick="editTemplate('${template.id}')">
                                 <i class="fas fa-edit"></i>
                             </button>
@@ -1162,23 +1304,120 @@ function showError(message) {
     alert(`Error: ${message}`);
 }
 
-// Placeholder functions for template management
+// Template management functions
 function showTemplateEditor() {
-    alert('Template editor coming soon!');
+    // Initialize with default template
+    loadDefaultTemplate();
+    
+    // Show the label designer modal
+    const modal = new bootstrap.Modal(document.getElementById('labelDesignerModal'));
+    modal.show();
+    
+    // Setup canvas event listeners
+    setupCanvasEventListeners();
+    
+    // Setup tool buttons
+    setupToolButtons();
 }
 
-function editTemplate(templateId) {
-    alert(`Edit template ${templateId} - coming soon!`);
+async function editTemplate(templateId) {
+    try {
+        // Load the specific template
+        const response = await fetch(`/api/templates/${templateId}`);
+        if (response.ok) {
+            const template = await response.json();
+            currentDesignerTemplate = template;
+            
+            // Show the label designer modal
+            const modal = new bootstrap.Modal(document.getElementById('labelDesignerModal'));
+            modal.show();
+            
+            // Render the template
+            renderCanvas();
+            updateTemplateInfo();
+            
+            // Setup canvas event listeners
+            setupCanvasEventListeners();
+            
+            // Setup tool buttons
+            setupToolButtons();
+        } else {
+            showError('Failed to load template for editing.');
+        }
+    } catch (error) {
+        console.error('Failed to load template:', error);
+        showError('Failed to load template for editing.');
+    }
 }
 
-function deleteTemplate(templateId) {
-    if (confirm('Are you sure you want to delete this template?')) {
-        alert(`Delete template ${templateId} - coming soon!`);
+async function deleteTemplate(templateId) {
+    if (!confirm('Are you sure you want to delete this template?')) {
+        return;
+    }
+    
+    try {
+        const response = await fetch(`/api/templates/${templateId}`, {
+            method: 'DELETE'
+        });
+        
+        if (response.ok) {
+            showSuccess('Template deleted successfully!');
+            // Reload templates to update the display
+            loadTemplates();
+        } else {
+            const result = await response.json();
+            showError(result.error || 'Failed to delete template.');
+        }
+    } catch (error) {
+        console.error('Failed to delete template:', error);
+        showError('Failed to delete template. Please try again.');
     }
 }
 
 function importTemplate() {
-    alert('Template import coming soon!');
+    // Create a file input for template import
+    const fileInput = document.createElement('input');
+    fileInput.type = 'file';
+    fileInput.accept = '.json';
+    fileInput.onchange = async (e) => {
+        const file = e.target.files[0];
+        if (!file) return;
+        
+        try {
+            const text = await file.text();
+            const template = JSON.parse(text);
+            
+            // Validate template structure
+            if (!template.name || !template.config || !template.config.elements) {
+                throw new Error('Invalid template format');
+            }
+            
+            // Set as current template for editing
+            currentDesignerTemplate = template;
+            
+            // Show the label designer modal
+            const modal = new bootstrap.Modal(document.getElementById('labelDesignerModal'));
+            modal.show();
+            
+            // Render the template
+            renderCanvas();
+            updateTemplateInfo();
+            
+            // Setup canvas event listeners
+            setupCanvasEventListeners();
+            
+            // Setup tool buttons
+            setupToolButtons();
+            
+            showSuccess('Template imported successfully! You can now edit and save it.');
+            
+        } catch (error) {
+            console.error('Failed to import template:', error);
+            showError('Failed to import template. Please check the file format.');
+        }
+    };
+    
+    fileInput.click();
 }
 
 // Label Designer functionality
@@ -1361,6 +1600,13 @@ function createCanvasElement(element) {
             <input type="checkbox" ${element.checked ? 'checked' : ''}>
             <span>${element.label || ''}</span>
         `;
+    } else if (element.type === 'image') {
+        const img = document.createElement('img');
+        img.src = element.imageUrl || '';
+        img.style.maxWidth = '100%';
+        img.style.maxHeight = '100%';
+        img.style.objectFit = 'contain';
+        div.appendChild(img);
     }
     
     // Add click event for selection
@@ -1373,6 +1619,12 @@ function createCanvasElement(element) {
     div.draggable = true;
     div.addEventListener('dragstart', (e) => {
         e.dataTransfer.setData('text/plain', element.id);
+        e.dataTransfer.effectAllowed = 'move';
+    });
+    
+    // Add drag end event to update position
+    div.addEventListener('dragend', (e) => {
+        // Position will be updated in the canvas drop event
     });
     
     return div;
@@ -1407,10 +1659,7 @@ function updatePropertiesPanel(element) {
             <div class="mb-2">
                 <label class="form-label">CSV Field</label>
                 <select class="form-control" id="csvFieldInput">
-                    <option value="">-- Select CSV Field --</option>
-                    ${getAvailableCSVFields().map(field => 
-                        `<option value="{{${field}}}" ${element.content === `{{${field}}}` ? 'selected' : ''}>${field}</option>`
-                    ).join('')}
+                    <option value="">-- Loading CSV Fields --</option>
                 </select>
                 <small class="form-text text-muted">Select a CSV field to insert as placeholder</small>
             </div>
@@ -1485,6 +1734,32 @@ function updatePropertiesPanel(element) {
         `;
         
         setupPropertyListeners(element);
+    } else if (element.type === 'image') {
+        propertiesPanel.innerHTML = `
+            <div class="mb-2">
+                <label class="form-label">Image</label>
+                <input type="file" class="form-control" id="imageInput" accept="image/*">
+                <small class="form-text text-muted">Select a new image</small>
+            </div>
+            <div class="mb-2">
+                <label class="form-label">X Position</label>
+                <input type="number" class="form-control" id="xInput" value="${element.x}" step="0.1" min="0" max="4">
+            </div>
+            <div class="mb-2">
+                <label class="form-label">Y Position</label>
+                <input type="number" class="form-control" id="yInput" value="${element.y}" step="0.1" min="0" max="6">
+            </div>
+            <div class="mb-2">
+                <label class="form-label">Width</label>
+                <input type="number" class="form-control" id="widthInput" value="${element.width}" step="0.1" min="0.1" max="4">
+            </div>
+            <div class="mb-2">
+                <label class="form-label">Height</label>
+                <input type="number" class="form-control" id="heightInput" value="${element.height}" step="0.1" min="0.1" max="6">
+            </div>
+        `;
+        
+        setupPropertyListeners(element);
     }
 }
 
@@ -1505,6 +1780,22 @@ function setupPropertyListeners(element) {
     // CSV Field dropdown
     const csvFieldInput = document.getElementById('csvFieldInput');
     if (csvFieldInput) {
+        // Populate CSV fields asynchronously
+        (async () => {
+            try {
+                const fields = await getAvailableCSVFields();
+                csvFieldInput.innerHTML = `
+                    <option value="">-- Select CSV Field --</option>
+                    ${fields.map(field => 
+                        `<option value="{{${field}}}" ${element.content === `{{${field}}}` ? 'selected' : ''}>${field}</option>`
+                    ).join('')}
+                `;
+            } catch (error) {
+                console.error('Failed to load CSV fields:', error);
+                csvFieldInput.innerHTML = '<option value="">-- Failed to load fields --</option>';
+            }
+        })();
+        
         csvFieldInput.addEventListener('change', (e) => {
             if (element.type === 'text' && e.target.value) {
                 element.content = e.target.value;
@@ -1549,6 +1840,19 @@ function setupPropertyListeners(element) {
         });
     }
     
+    // Image file change
+    const imageInput = document.getElementById('imageInput');
+    if (imageInput) {
+        imageInput.addEventListener('change', (e) => {
+            const file = e.target.files[0];
+            if (file && element.type === 'image') {
+                element.imageUrl = URL.createObjectURL(file);
+                element.imageFile = file;
+                renderCanvas();
+            }
+        });
+    }
+    
     // Position and size
     ['x', 'y', 'width', 'height'].forEach(prop => {
         const input = document.getElementById(`${prop}Input`);
@@ -1570,6 +1874,14 @@ function setupToolButtons() {
         });
     }
     
+    // Add Image button
+    const addImageBtn = document.getElementById('addImageBtn');
+    if (addImageBtn) {
+        addImageBtn.addEventListener('click', () => {
+            addImageElement();
+        });
+    }
+    
     // Add Checkbox button
     const addCheckboxBtn = document.getElementById('addCheckboxBtn');
     if (addCheckboxBtn) {
@@ -1579,7 +1891,7 @@ function setupToolButtons() {
     }
     
     // Delete button
-    const deleteElementBtn = document.getElementById('deleteElementBtn');
+    deleteElementBtn = document.getElementById('deleteElementBtn');
     if (deleteElementBtn) {
         deleteElementBtn.addEventListener('click', () => {
             deleteSelectedElement();
@@ -1591,6 +1903,22 @@ function setupToolButtons() {
     if (saveTemplateBtn) {
         saveTemplateBtn.addEventListener('click', () => {
             saveTemplate();
+        });
+    }
+    
+    // Preview button
+    const previewBtn = document.getElementById('previewBtn');
+    if (previewBtn) {
+        previewBtn.addEventListener('click', () => {
+            showPdfPreview();
+        });
+    }
+    
+    // Test Print button
+    const testPrintBtn = document.getElementById('testPrintBtn');
+    if (testPrintBtn) {
+        testPrintBtn.addEventListener('click', () => {
+            showPdfPreview();
         });
     }
 }
@@ -1616,7 +1944,7 @@ function addTextElement() {
 }
 
 // Get available CSV fields for the current event
-function getAvailableCSVFields() {
+async function getAvailableCSVFields() {
     if (!currentEvent) return [];
     
     // Standard fields that are always available
@@ -1626,25 +1954,68 @@ function getAvailableCSVFields() {
         'eventName', 'eventDate'
     ];
     
-    // Get custom fields from the current event's contacts
+    // Get custom fields from all contacts in the current event
     const customFields = [];
-    if (window.currentEventContacts && window.currentEventContacts.length > 0) {
-        const firstContact = window.currentEventContacts[0];
-        if (firstContact.custom_fields) {
-            try {
-                const parsed = JSON.parse(firstContact.custom_fields);
-                Object.keys(parsed).forEach(key => {
-                    if (!standardFields.includes(key)) {
-                        customFields.push(key);
+    try {
+        // Get a larger sample of contacts to find all possible custom fields
+        const response = await fetch(`/api/contacts/search/${currentEvent.id}?q=&limit=100`);
+        if (response.ok) {
+            const contacts = await response.json();
+            
+            // Collect all unique custom field names from all contacts
+            const allCustomFields = new Set();
+            contacts.forEach(contact => {
+                if (contact.custom_fields) {
+                    try {
+                        const parsed = JSON.parse(contact.custom_fields);
+                        Object.keys(parsed).forEach(key => {
+                            if (!standardFields.includes(key)) {
+                                allCustomFields.add(key);
+                            }
+                        });
+                    } catch (e) {
+                        console.warn('Could not parse custom fields for contact:', e);
                     }
-                });
-            } catch (e) {
-                console.warn('Could not parse custom fields:', e);
-            }
+                }
+            });
+            
+            // Convert Set to array and sort alphabetically
+            customFields.push(...Array.from(allCustomFields).sort());
         }
+    } catch (error) {
+        console.warn('Failed to load contacts for CSV fields:', error);
     }
     
     return [...standardFields, ...customFields];
+}
+
+function addImageElement() {
+    // Create a file input for image selection
+    const fileInput = document.createElement('input');
+    fileInput.type = 'file';
+    fileInput.accept = 'image/*';
+    fileInput.onchange = (e) => {
+        const file = e.target.files[0];
+        if (!file) return;
+        
+        // Create a new image element
+        const newElement = {
+            type: 'image',
+            id: `image-${Date.now()}`,
+            x: 0.5,
+            y: 0.5,
+            width: 1,
+            height: 1,
+            imageUrl: URL.createObjectURL(file),
+            imageFile: file
+        };
+        
+        currentDesignerTemplate.config.elements.push(newElement);
+        renderCanvas();
+        selectElement(newElement);
+    };
+    
+    fileInput.click();
 }
 
 function addCheckboxElement() {
@@ -1710,8 +2081,23 @@ async function saveTemplate() {
             } else {
                 showError('Failed to save event template');
             }
+        } else if (currentDesignerTemplate.id) {
+            // Update existing template
+            const response = await fetch(`/api/templates/${currentDesignerTemplate.id}`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(currentDesignerTemplate)
+            });
+            
+            if (response.ok) {
+                showSuccess('Template updated successfully!');
+                // Reload templates to refresh the display
+                loadTemplates();
+            } else {
+                showError('Failed to update template');
+            }
         } else {
-            // Save as general template
+            // Save as new general template
             const response = await fetch('/api/templates', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -1719,7 +2105,12 @@ async function saveTemplate() {
             });
             
             if (response.ok) {
+                const result = await response.json();
+                // Update the template with the new ID
+                currentDesignerTemplate.id = result.id;
                 showSuccess('Template saved successfully!');
+                // Reload templates to refresh the display
+                loadTemplates();
             } else {
                 showError('Failed to save template');
             }
@@ -1740,4 +2131,238 @@ function setupCanvasEventListeners() {
         });
         document.getElementById('elementProperties').innerHTML = '<p class="text-muted">Select an element to edit its properties</p>';
     });
+    
+    // Setup drag and drop for canvas elements
+    setupDragAndDrop();
+}
+
+function setupDragAndDrop() {
+    const canvas = document.getElementById('labelCanvas');
+    
+    // Handle drop on canvas
+    canvas.addEventListener('dragover', (e) => {
+        e.preventDefault();
+        e.dataTransfer.dropEffect = 'move';
+    });
+    
+    canvas.addEventListener('drop', (e) => {
+        e.preventDefault();
+        const elementId = e.dataTransfer.getData('text/plain');
+        const element = currentDesignerTemplate.config.elements.find(el => el.id === elementId);
+        
+        if (element) {
+            // Calculate new position relative to canvas
+            const rect = canvas.getBoundingClientRect();
+            const x = (e.clientX - rect.left) / 100; // Convert to template units
+            const y = (e.clientY - rect.top) / 100;
+            
+            // Update element position
+            element.x = Math.max(0, Math.min(4 - element.width, x));
+            element.y = Math.max(0, Math.min(6 - element.height, y));
+            
+            // Re-render canvas
+            renderCanvas();
+            
+            // Update properties panel if this element is selected
+            if (selectedElement && selectedElement.id === element.id) {
+                updatePropertiesPanel(element);
+            }
+        }
+    });
+}
+
+// PDF Preview functionality
+function showPdfPreview() {
+    if (!currentDesignerTemplate) {
+        showError('No template to preview');
+        return;
+    }
+    
+    // Show the PDF preview modal
+    const modal = new bootstrap.Modal(document.getElementById('pdfPreviewModal'));
+    modal.show();
+    
+    // Generate PDF preview
+    generatePdfPreview();
+    
+    // Setup PDF modal buttons
+    setupPdfModalButtons();
+}
+
+function generatePdfPreview() {
+    const previewContent = document.getElementById('pdfPreviewContent');
+    previewContent.innerHTML = '<p class="text-muted">Generating PDF preview...</p>';
+    
+    try {
+        // Create a sample contact for preview
+        const sampleContact = {
+            firstName: 'John',
+            lastName: 'Doe',
+            middleName: 'M',
+            birthDate: '1990-01-01',
+            address: '123 Main St',
+            city: 'Anytown',
+            state: 'CA',
+            zip: '12345',
+            phone: '(555) 123-4567',
+            email: 'john.doe@example.com',
+            eventName: 'Sample Event',
+            eventDate: '2024-01-01'
+        };
+        
+        // Generate the PDF preview
+        const pdfBlob = generatePdf(currentDesignerTemplate, sampleContact);
+        
+        // Display the PDF preview
+        displayPdfPreview(pdfBlob);
+        
+    } catch (error) {
+        console.error('Failed to generate PDF preview:', error);
+        previewContent.innerHTML = '<p class="text-danger">Failed to generate PDF preview</p>';
+    }
+}
+
+function generatePdf(template, contactData) {
+    // Create new PDF document (4" x 6" = 288 x 432 points)
+    const { jsPDF } = window.jspdf;
+    const doc = new jsPDF({
+        orientation: 'portrait',
+        unit: 'pt',
+        format: [288, 432] // 4" x 6"
+    });
+    
+    // Set default font
+    doc.setFont('helvetica');
+    
+    // Process each element in the template
+    template.config.elements.forEach(element => {
+        const x = element.x * 72; // Convert inches to points
+        const y = element.y * 72;
+        const width = element.width * 72;
+        const height = element.height * 72;
+        
+        if (element.type === 'text') {
+            // Process text content with placeholders
+            let content = element.content || '';
+            
+            // Replace placeholders with actual data
+            content = content.replace(/\{\{firstName\}\}/g, contactData.firstName || '');
+            content = content.replace(/\{\{lastName\}\}/g, contactData.lastName || '');
+            content = content.replace(/\{\{middleName\}\}/g, contactData.middleName || '');
+            content = content.replace(/\{\{birthDate\}\}/g, contactData.birthDate || '');
+            content = content.replace(/\{\{address\}\}/g, contactData.address || '');
+            content = content.replace(/\{\{city\}\}/g, contactData.city || '');
+            content = content.replace(/\{\{state\}\}/g, contactData.state || '');
+            content = content.replace(/\{\{zip\}\}/g, contactData.zip || '');
+            content = content.replace(/\{\{phone\}\}/g, contactData.phone || '');
+            content = content.replace(/\{\{email\}\}/g, contactData.email || '');
+            content = content.replace(/\{\{eventName\}\}/g, contactData.eventName || '');
+            content = content.replace(/\{\{eventDate\}\}/g, contactData.eventDate || '');
+            
+            // Set font properties
+            const fontSize = element.fontSize || 12;
+            doc.setFontSize(fontSize);
+            
+            // Set text color
+            if (element.color) {
+                doc.setTextColor(element.color);
+            }
+            
+            // Set font weight
+            if (element.bold) {
+                doc.setFont('helvetica', 'bold');
+            }
+            
+            // Set text alignment
+            let textX = x;
+            if (element.align === 'center') {
+                textX = x + (width / 2);
+                doc.text(content, textX, y + fontSize, { align: 'center' });
+            } else if (element.align === 'right') {
+                textX = x + width;
+                doc.text(content, textX, y + fontSize, { align: 'right' });
+            } else {
+                doc.text(content, textX, y + fontSize);
+            }
+            
+            // Reset font to normal
+            doc.setFont('helvetica', 'normal');
+            
+        } else if (element.type === 'checkbox') {
+            // Draw checkbox
+            doc.rect(x, y, 20, 20);
+            if (element.checked) {
+                doc.line(x + 5, y + 10, x + 8, y + 15);
+                doc.line(x + 8, y + 15, x + 15, y + 5);
+            }
+            
+            // Add label
+            if (element.label) {
+                doc.setFontSize(12);
+                doc.text(element.label, x + 25, y + 15);
+            }
+            
+        } else if (element.type === 'image') {
+            // For images, we'll add a placeholder rectangle
+            doc.rect(x, y, width, height);
+            doc.setFontSize(10);
+            doc.text('[Image]', x + (width / 2), y + (height / 2), { align: 'center' });
+        }
+    });
+    
+    // Convert to blob
+    const pdfBytes = doc.output('blob');
+    return pdfBytes;
+}
+
+function displayPdfPreview(pdfBlob) {
+    const previewContent = document.getElementById('pdfPreviewContent');
+    
+    // Create object URL for the PDF
+    const pdfUrl = URL.createObjectURL(pdfBlob);
+    
+    // Create iframe to display PDF
+    previewContent.innerHTML = `
+        <iframe 
+            src="${pdfUrl}#toolbar=0&navpanes=0&scrollbar=0" 
+            width="100%" 
+            height="600px" 
+            style="border: none;"
+        ></iframe>
+    `;
+    
+    // Store the blob for download/print
+    window.currentPdfBlob = pdfBlob;
+    window.currentPdfUrl = pdfUrl;
+}
+
+function setupPdfModalButtons() {
+    // Download PDF button
+    const downloadBtn = document.getElementById('downloadPdfBtn');
+    if (downloadBtn) {
+        downloadBtn.addEventListener('click', () => {
+            if (window.currentPdfBlob) {
+                const url = window.currentPdfUrl;
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = `${currentDesignerTemplate.name || 'template'}.pdf`;
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+            }
+        });
+    }
+    
+    // Print PDF button
+    const printBtn = document.getElementById('printPdfBtn');
+    if (printBtn) {
+        printBtn.addEventListener('click', () => {
+            if (window.currentPdfUrl) {
+                const printWindow = window.open(window.currentPdfUrl);
+                printWindow.onload = () => {
+                    printWindow.print();
+                };
+            }
+        });
+    }
 }
