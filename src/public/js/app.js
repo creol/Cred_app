@@ -1698,39 +1698,7 @@ function loadDefaultTemplate() {
     updateTemplateInfo();
 }
 
-async function loadEventTemplate() {
-    try {
-        const response = await fetch(`/api/templates/event/${currentEvent.id}`);
-        if (response.ok) {
-            const templates = await response.json();
-            if (templates.length > 0) {
-                currentDesignerTemplate = templates[0];
-            } else {
-                // No event-specific template found, try to load default template
-                const defaultResponse = await fetch('/api/templates/default');
-                if (defaultResponse.ok) {
-                    currentTemplate = await defaultResponse.json();
-                    console.log('Loaded default template for event:', currentTemplate.name);
-                }
-            }
-        }
-    } catch (error) {
-        console.error('Failed to load event template:', error);
-        // Fallback to default template
-        try {
-            const defaultResponse = await fetch('/api/templates/default');
-            if (defaultResponse.ok) {
-                currentTemplate = await defaultResponse.json();
-                console.log('Loaded default template as fallback:', currentTemplate.name);
-            }
-        } catch (fallbackError) {
-            console.warn('Failed to load default template as fallback:', fallbackError);
-        }
-    }
-    
-    renderCanvas();
-    updateTemplateInfo();
-}
+
 
 function renderCanvas() {
     const canvas = document.getElementById('labelCanvas');
