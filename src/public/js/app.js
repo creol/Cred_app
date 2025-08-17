@@ -772,11 +772,17 @@ function displayAllContactFields(contact) {
 // Generate label preview
 async function generateLabelPreview(contact) {
     try {
+        console.log('Generating label preview for contact:', contact);
+        console.log('Current template:', currentTemplate);
+        console.log('Current event:', currentEvent);
+        
         // Load default template if not already loaded
         if (!currentTemplate) {
+            console.log('No current template, trying to load default...');
             const response = await fetch('/api/templates/default');
             if (response.ok) {
                 currentTemplate = await response.json();
+                console.log('Loaded default template:', currentTemplate);
             } else {
                 console.error('No default template available');
                 displayLabelPreview({ preview: { elements: [] } });
@@ -786,19 +792,22 @@ async function generateLabelPreview(contact) {
         
         // Create preview data
         const previewData = {
-            firstName: contact.first_name,
-            lastName: contact.last_name,
-            middleName: contact.middle_name,
-            birthDate: contact.birth_date,
-            address: contact.address,
-            city: contact.city,
-            state: contact.state,
-            zip: contact.zip,
-            phone: contact.phone,
-            email: contact.email,
-            eventName: currentEvent.name,
-            eventDate: currentEvent.date
+            firstName: contact.first_name || '',
+            lastName: contact.last_name || '',
+            middleName: contact.middle_name || '',
+            birthDate: contact.birth_date || '',
+            address: contact.address || '',
+            city: contact.city || '',
+            state: contact.state || '',
+            zip: contact.zip || '',
+            phone: contact.phone || '',
+            email: contact.email || '',
+            eventName: currentEvent ? currentEvent.name : '',
+            eventDate: currentEvent ? currentEvent.date : ''
         };
+        
+        console.log('Preview data:', previewData);
+        console.log('Calling preview endpoint for template:', currentTemplate.id);
         
         // Generate preview
         const response = await fetch(`/api/templates/${currentTemplate.id}/preview`, {
@@ -807,11 +816,15 @@ async function generateLabelPreview(contact) {
             body: JSON.stringify({ sampleData: previewData })
         });
         
+        console.log('Preview response status:', response.status);
+        
         if (response.ok) {
             const preview = await response.json();
+            console.log('Preview response:', preview);
             displayLabelPreview(preview);
         } else {
-            console.error('Template preview failed');
+            const errorText = await response.text();
+            console.error('Template preview failed:', response.status, errorText);
             displayLabelPreview({ preview: { elements: [] } });
         }
     } catch (error) {
@@ -823,9 +836,16 @@ async function generateLabelPreview(contact) {
 
 // Display label preview
 function displayLabelPreview(preview) {
+    console.log('Displaying label preview:', preview);
+    
     const previewDiv = document.getElementById('labelPreview');
+    if (!previewDiv) {
+        console.error('Preview div not found!');
+        return;
+    }
     
     if (preview.preview && preview.preview.elements) {
+        console.log('Preview elements:', preview.preview.elements);
         let previewHtml = '<div class="text-center">';
         preview.preview.elements.forEach(element => {
             if (element.type === 'text') {
@@ -854,7 +874,9 @@ function displayLabelPreview(preview) {
         `;
         
         previewDiv.innerHTML = previewHtml;
+        console.log('Preview HTML set successfully');
     } else {
+        console.log('No preview data or elements found, showing fallback');
         previewDiv.innerHTML = '<small class="text-muted">Preview not available</small>';
     }
 }
