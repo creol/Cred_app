@@ -251,12 +251,116 @@
                         <button class="btn btn-primary" id="showTemplateEditorBtn">
                             <i class="fas fa-plus"></i> New Template
                         </button>
+                        <button class="btn btn-success" id="showLabelDesignerBtn">
+                            <i class="fas fa-palette"></i> Label Designer
+                        </button>
                         <button class="btn btn-outline-secondary" id="importTemplateBtn">
                             <i class="fas fa-upload"></i> Import
                         </button>
                     </div>
                     <div id="templatesList">
                         <!-- Templates will be loaded here -->
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Label Designer Modal -->
+    <div class="modal fade" id="labelDesignerModal" tabindex="-1">
+        <div class="modal-dialog modal-xl">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">Label Designer</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="row">
+                        <!-- Left Panel: Tools and Properties -->
+                        <div class="col-md-3">
+                            <div class="card">
+                                <div class="card-header">
+                                    <h6 class="mb-0">Tools</h6>
+                                </div>
+                                <div class="card-body">
+                                    <div class="d-grid gap-2">
+                                        <button class="btn btn-outline-primary btn-sm" id="addTextBtn">
+                                            <i class="fas fa-font"></i> Add Text
+                                        </button>
+                                        <button class="btn btn-outline-primary btn-sm" id="addImageBtn">
+                                            <i class="fas fa-image"></i> Add Image
+                                        </button>
+                                        <button class="btn btn-outline-primary btn-sm" id="addCheckboxBtn">
+                                            <i class="fas fa-check-square"></i> Add Checkbox
+                                        </button>
+                                        <button class="btn btn-outline-danger btn-sm" id="deleteElementBtn">
+                                            <i class="fas fa-trash"></i> Delete
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <div class="card mt-3">
+                                <div class="card-header">
+                                    <h6 class="mb-0">Properties</h6>
+                                </div>
+                                <div class="card-body" id="elementProperties">
+                                    <p class="text-muted">Select an element to edit its properties</p>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <!-- Center Panel: Canvas -->
+                        <div class="col-md-6">
+                            <div class="card">
+                                <div class="card-header d-flex justify-content-between align-items-center">
+                                    <h6 class="mb-0">Label Canvas (4" × 6")</h6>
+                                    <div>
+                                        <button class="btn btn-outline-secondary btn-sm" id="previewBtn">
+                                            <i class="fas fa-eye"></i> Preview
+                                        </button>
+                                        <button class="btn btn-outline-primary btn-sm" id="testPrintBtn">
+                                            <i class="fas fa-print"></i> Test Print
+                                        </button>
+                                    </div>
+                                </div>
+                                <div class="card-body">
+                                    <div id="labelCanvas" class="border" style="width: 400px; height: 600px; margin: 0 auto; position: relative; background: white;">
+                                        <!-- Canvas content will be rendered here -->
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <!-- Right Panel: Template Info and Actions -->
+                        <div class="col-md-3">
+                            <div class="card">
+                                <div class="card-header">
+                                    <h6 class="mb-0">Template Info</h6>
+                                </div>
+                                <div class="card-body">
+                                    <div class="mb-3">
+                                        <label class="form-label">Template Name</label>
+                                        <input type="text" class="form-control" id="templateName" placeholder="Enter template name">
+                                    </div>
+                                    <div class="mb-3">
+                                        <label class="form-label">Description</label>
+                                        <textarea class="form-control" id="templateDescription" rows="3" placeholder="Enter description"></textarea>
+                                    </div>
+                                    <div class="d-grid gap-2">
+                                        <button class="btn btn-success" id="saveTemplateBtn">
+                                            <i class="fas fa-save"></i> Save Template
+                                        </button>
+                                        <button class="btn btn-outline-primary" id="duplicateTemplateBtn">
+                                            <i class="fas fa-copy"></i> Duplicate
+                                        </button>
+                                        <button class="btn btn-outline-secondary" id="loadTemplateBtn">
+                                            <i class="fas fa-folder-open"></i> Load Template
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
                     </div>
                 </div>
             </div>

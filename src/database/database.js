@@ -87,8 +87,10 @@ class Database {
         description TEXT,
         config TEXT NOT NULL,
         is_default BOOLEAN DEFAULT 0,
+        event_id TEXT,
         created_at TEXT NOT NULL,
-        updated_at TEXT NOT NULL
+        updated_at TEXT NOT NULL,
+        FOREIGN KEY (event_id) REFERENCES events (id)
       )`,
 
       // Audit log table
@@ -144,6 +146,7 @@ class Database {
       'CREATE INDEX IF NOT EXISTS idx_contacts_birth_date ON contacts(birth_date)',
       'CREATE INDEX IF NOT EXISTS idx_credentials_contact_id ON credentials(contact_id)',
       'CREATE INDEX IF NOT EXISTS idx_credentials_event_id ON credentials(event_id)',
+      'CREATE INDEX IF NOT EXISTS idx_templates_event_id ON templates(event_id)',
       'CREATE INDEX IF NOT EXISTS idx_audit_log_created_at ON audit_log(created_at)',
       'CREATE INDEX IF NOT EXISTS idx_audit_log_action ON audit_log(action)'
     ];
@@ -170,6 +173,16 @@ class Database {
         // Set all existing events to 'active' status
         await this.run('UPDATE events SET status = "active" WHERE status IS NULL');
         console.log('✅ Status column added successfully');
+      }
+
+      // Check if templates table has event_id column
+      const templateTableInfo = await this.all("PRAGMA table_info(templates)");
+      const hasEventIdColumn = templateTableInfo.some(col => col.name === 'event_id');
+      
+      if (!hasEventIdColumn) {
+        console.log('🔄 Adding event_id column to templates table...');
+        await this.run('ALTER TABLE templates ADD COLUMN event_id TEXT');
+        console.log('✅ Event ID column added to templates table');
       }
     } catch (error) {
       console.error('Migration failed:', error);
@@ -337,17 +350,14 @@ class Database {
 
   async createDefaultTemplate() {
     try {
-      // Check if any templates exist
-      const existingTemplate = await this.get('SELECT COUNT(*) as count FROM templates');
-      if (existingTemplate.count > 0) {
-        return; // Templates already exist
-      }
-
-      // Create default template
+      // Check if default template exists
+      const existingDefault = await this.get('SELECT * FROM templates WHERE is_default = 1');
+      
+      // Create or update default template
       const defaultTemplate = {
         id: 'default-template',
-        name: 'Default Credential',
-        description: 'Standard 4x6 fold-over credential template',
+        name: 'My name is',
+        description: 'Standard 4x6 fold-over name badge template',
         config: JSON.stringify({
           width: 4,
           height: 6,
@@ -355,46 +365,76 @@ class Database {
           elements: [
             {
               type: 'text',
-              id: 'name',
+              id: 'hello',
               x: 0.5,
               y: 0.5,
               width: 3,
-              height: 0.75,
-              content: '{{firstName}} {{lastName}}',
-              fontSize: 24,
+              height: 0.6,
+              content: 'Hello, My Name Is',
+              fontSize: 18,
               bold: true,
-              align: 'center'
+              align: 'center',
+              color: '#333333'
+            },
+            {
+              type: 'text',
+              id: 'name',
+              x: 0.5,
+              y: 1.2,
+              width: 3,
+              height: 1,
+              content: '{{firstName}} {{lastName}}',
+              fontSize: 28,
+              bold: true,
+              align: 'center',
+              color: '#000000'
+            },
+            {
+              type: 'text',
+              id: 'title',
+              x: 0.5,
+              y: 2.3,
+              width: 3,
+              height: 0.6,
+              content: '{{title}}',
+              fontSize: 16,
+              bold: false,
+              align: 'center',
+              color: '#666666'
             },
             {
               type: 'text',
               id: 'event',
               x: 0.5,
-              y: 1.5,
+              y: 3.1,
               width: 3,
               height: 0.5,
               content: '{{eventName}}',
-              fontSize: 16,
-              align: 'center'
+              fontSize: 14,
+              align: 'center',
+              color: '#888888'
             },
             {
               type: 'text',
               id: 'date',
               x: 0.5,
-              y: 2.1,
+              y: 3.7,
               width: 3,
               height: 0.4,
               content: '{{eventDate}}',
-              fontSize: 14,
-              align: 'center'
+              fontSize: 12,
+              align: 'center',
+              color: '#888888'
             },
             {
               type: 'checkbox',
               id: 'credential',
               x: 1.5,
-              y: 2.8,
+              y: 4.5,
               width: 0.3,
               height: 0.3,
-              label: 'Credentialed'
+              label: 'Credentialed',
+              color: '#28a745'
             }
           ]
         }),
@@ -403,23 +443,43 @@ class Database {
         updated_at: new Date().toISOString()
       };
 
-      const sql = `
-        INSERT INTO templates (
-          id, name, description, config, is_default, created_at, updated_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?)
-      `;
-
-      await this.run(sql, [
-        defaultTemplate.id,
-        defaultTemplate.name,
-        defaultTemplate.description,
-        defaultTemplate.config,
-        defaultTemplate.is_default,
-        defaultTemplate.created_at,
-        defaultTemplate.updated_at
-      ]);
-
-      console.log('✅ Created default template');
+      if (existingDefault) {
+        // Update existing default template
+        const updateSql = `
+          UPDATE templates 
+          SET name = ?, description = ?, config = ?, updated_at = ?
+          WHERE id = ?
+        `;
+        
+        await this.run(updateSql, [
+          defaultTemplate.name,
+          defaultTemplate.description,
+          defaultTemplate.config,
+          defaultTemplate.updated_at,
+          defaultTemplate.id
+        ]);
+        
+        console.log('✅ Updated default template');
+      } else {
+        // Insert new default template
+        const insertSql = `
+          INSERT INTO templates (
+            id, name, description, config, is_default, created_at, updated_at
+          ) VALUES (?, ?, ?, ?, ?, ?, ?)
+        `;
+        
+        await this.run(insertSql, [
+          defaultTemplate.id,
+          defaultTemplate.name,
+          defaultTemplate.description,
+          defaultTemplate.config,
+          defaultTemplate.is_default,
+          defaultTemplate.created_at,
+          defaultTemplate.updated_at
+        ]);
+        
+        console.log('✅ Created default template');
+      }
     } catch (error) {
       console.error('Failed to create default template:', error);
     }
@@ -560,6 +620,48 @@ class Database {
     await this.run('DELETE FROM templates WHERE id = ?', [templateId]);
   }
 
+  async createEventTemplate(eventId, templateData) {
+    const id = uuidv4();
+    const now = moment().toISOString();
+    
+    const sql = `
+      INSERT INTO templates (
+        id, name, description, config, is_default, event_id, created_at, updated_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    `;
+    
+    await this.run(sql, [
+      id, templateData.name, templateData.description || '',
+      JSON.stringify(templateData.config), false, eventId, now, now
+    ]);
+    
+    return { id, ...templateData, event_id: eventId, created_at: now, updated_at: now };
+  }
+
+  async getEventTemplates(eventId) {
+    const templates = await this.all('SELECT * FROM templates WHERE event_id = ? ORDER BY name', [eventId]);
+    return templates.map(t => ({
+      ...t,
+      config: JSON.parse(t.config)
+    }));
+  }
+
+  async duplicateTemplate(templateId, newName, eventId = null) {
+    const original = await this.getTemplate(templateId);
+    if (!original) {
+      throw new Error('Template not found');
+    }
+    
+    const duplicateData = {
+      name: newName,
+      description: `${original.description} (Copy)`,
+      config: original.config,
+      event_id: eventId || original.event_id
+    };
+    
+    return await this.saveTemplate(duplicateData);
+  }
+
   // Audit logging
   async logAudit(auditData) {
     const id = uuidv4();
@@ -634,8 +736,8 @@ class Database {
     
     if (stats) {
       stats.credentialed_percentage = stats.total_contacts > 0 
-        ? Math.round((stats.credentialed_count / stats.total_contacts) * 100)
-        : 0;
+        ? ((stats.credentialed_count / stats.total_contacts) * 100).toFixed(2)
+        : '0.00';
     }
     
     return stats;

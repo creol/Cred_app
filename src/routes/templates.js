@@ -294,6 +294,58 @@ module.exports = function(database, config, logger) {
     }
   });
 
+  // Get event-specific templates
+  router.get('/event/:eventId', async (req, res) => {
+    try {
+      const eventId = req.params.eventId;
+      const templates = await database.getEventTemplates(eventId);
+      res.json(templates);
+    } catch (error) {
+      logger.error('Failed to get event templates', { error: error.message, eventId: req.params.eventId });
+      res.status(500).json({ error: 'Failed to get event templates' });
+    }
+  });
+
+  // Create event-specific template
+  router.post('/event/:eventId', async (req, res) => {
+    try {
+      const eventId = req.params.eventId;
+      const { name, description, config: templateConfig } = req.body;
+      
+      if (!name || !templateConfig) {
+        return res.status(400).json({ error: 'Template name and configuration are required' });
+      }
+
+      // Validate template configuration
+      const validationResult = validateTemplateConfig(templateConfig);
+      if (!validationResult.isValid) {
+        return res.status(400).json({ 
+          error: 'Invalid template configuration', 
+          details: validationResult.errors 
+        });
+      }
+
+      const templateData = {
+        name: name.trim(),
+        description: description?.trim() || '',
+        config: templateConfig,
+        event_id: eventId
+      };
+
+      const savedTemplate = await database.createEventTemplate(eventId, templateData);
+      
+      logger.logTemplateAction('event_template_saved', savedTemplate.id, {
+        name: savedTemplate.name,
+        eventId: eventId
+      });
+
+      res.json(savedTemplate);
+    } catch (error) {
+      logger.error('Failed to save event template', { error: error.message, eventId: req.params.eventId });
+      res.status(500).json({ error: 'Failed to save event template' });
+    }
+  });
+
   // Set default template
   router.post('/:templateId/set-default', async (req, res) => {
     try {
@@ -338,6 +390,7 @@ module.exports = function(database, config, logger) {
         firstName: 'John',
         lastName: 'Doe',
         middleName: 'M',
+        title: 'Event Coordinator',
         birthDate: '1990-01-15',
         address: '1234 Main St',
         city: 'Anytown',

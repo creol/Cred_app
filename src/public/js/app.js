@@ -7,6 +7,7 @@ let searchTimeout = null;
 // Initialize app
 document.addEventListener('DOMContentLoaded', function() {
     loadEvents();
+    loadTemplates(); // Load templates on startup
     setupEventListeners();
 });
 
@@ -103,6 +104,11 @@ function setupEventListeners() {
         showTemplateEditorBtn.addEventListener('click', showTemplateEditor);
     }
 
+    const showLabelDesignerBtn = document.getElementById('showLabelDesignerBtn');
+    if (showLabelDesignerBtn) {
+        showLabelDesignerBtn.addEventListener('click', showLabelDesigner);
+    }
+
     // Import Template button
     const importTemplateBtn = document.getElementById('importTemplateBtn');
     if (importTemplateBtn) {
@@ -121,6 +127,20 @@ function setupEventListeners() {
     });
 }
 
+// Load sample contacts for CSV field dropdown
+async function loadSampleContacts(eventId) {
+    try {
+        // Get a few sample contacts to populate CSV field options
+        const response = await fetch(`/api/contacts/search/${eventId}?q=&limit=5`);
+        if (response.ok) {
+            const contacts = await response.json();
+            window.currentEventContacts = contacts;
+        }
+    } catch (error) {
+        console.warn('Failed to load sample contacts for CSV fields:', error);
+    }
+}
+
 // Load events
 async function loadEvents() {
     try {
@@ -136,6 +156,9 @@ async function loadEvents() {
                 currentEvent = activeEvent;
                 updateEventDisplay();
                 loadStatistics();
+                
+                // Load sample contacts for CSV field dropdown
+                loadSampleContacts(activeEvent.id);
                 
                 // Show event history for other events
                 const otherEvents = events.filter(event => event.id !== activeEvent.id);
@@ -445,6 +468,9 @@ async function searchContacts() {
         const response = await fetch(`/api/contacts/search/${currentEvent.id}?q=${encodeURIComponent(query)}`);
         const contacts = await response.json();
         
+        // Store contacts globally for CSV field dropdown
+        window.currentEventContacts = contacts;
+        
         displaySearchResults(contacts);
         showSearchResults(); // Show search results when performing new search
     } catch (error) {
@@ -720,6 +746,7 @@ async function generateLabelPreview(contact) {
             firstName: contact.first_name,
             lastName: contact.last_name,
             middleName: contact.middle_name,
+            title: contact.title || '',
             birthDate: contact.birth_date,
             address: contact.address,
             city: contact.city,
@@ -1017,6 +1044,13 @@ async function loadTemplates() {
             </div>
         `).join('');
         
+        // Automatically select the default template if none is selected
+        if (!currentTemplate && templates.length > 0) {
+            const defaultTemplate = templates.find(t => t.is_default) || templates[0];
+            currentTemplate = defaultTemplate;
+            console.log('Auto-selected template:', defaultTemplate.name);
+        }
+        
     } catch (error) {
         console.error('Failed to load templates:', error);
         showError('Failed to load templates.');
@@ -1146,4 +1180,578 @@ function deleteTemplate(templateId) {
 
 function importTemplate() {
     alert('Template import coming soon!');
+}
+
+// Label Designer functionality
+let currentDesignerTemplate = null;
+let selectedElement = null;
+let canvasElements = [];
+
+function showLabelDesigner() {
+    // Initialize with default template or current event template
+    if (currentEvent) {
+        loadEventTemplate();
+    } else {
+        loadDefaultTemplate();
+    }
+    
+    // Show the modal
+    const modal = new bootstrap.Modal(document.getElementById('labelDesignerModal'));
+    modal.show();
+    
+    // Setup canvas event listeners
+    setupCanvasEventListeners();
+    
+    // Setup tool buttons
+    setupToolButtons();
+}
+
+function loadDefaultTemplate() {
+    currentDesignerTemplate = {
+        name: 'Hello My Name Is',
+        description: 'Standard 4x6 fold-over name badge template',
+        config: {
+            width: 4,
+            height: 6,
+            foldOver: true,
+            elements: [
+                {
+                    type: 'text',
+                    id: 'hello',
+                    x: 0.5,
+                    y: 0.5,
+                    width: 3,
+                    height: 0.6,
+                    content: 'Hello, My Name Is',
+                    fontSize: 18,
+                    bold: true,
+                    align: 'center',
+                    color: '#333333'
+                },
+                {
+                    type: 'text',
+                    id: 'name',
+                    x: 0.5,
+                    y: 1.2,
+                    width: 3,
+                    height: 1,
+                    content: '{{firstName}} {{lastName}}',
+                    fontSize: 28,
+                    bold: true,
+                    align: 'center',
+                    color: '#000000'
+                },
+                {
+                    type: 'text',
+                    id: 'title',
+                    x: 0.5,
+                    y: 2.3,
+                    width: 3,
+                    height: 0.6,
+                    content: '{{title}}',
+                    fontSize: 16,
+                    bold: false,
+                    align: 'center',
+                    color: '#666666',
+                    conditional: true
+                },
+                {
+                    type: 'text',
+                    id: 'event',
+                    x: 0.5,
+                    y: 3.1,
+                    width: 3,
+                    height: 0.5,
+                    content: '{{eventName}}',
+                    fontSize: 14,
+                    align: 'center',
+                    color: '#888888'
+                },
+                {
+                    type: 'text',
+                    id: 'date',
+                    x: 0.5,
+                    y: 3.7,
+                    width: 3,
+                    height: 0.4,
+                    content: '{{eventDate}}',
+                    fontSize: 12,
+                    align: 'center',
+                    color: '#888888'
+                },
+                {
+                    type: 'checkbox',
+                    id: 'credential',
+                    x: 1.5,
+                    y: 4.5,
+                    width: 0.3,
+                    height: 0.3,
+                    label: 'Credentialed',
+                    color: '#28a745'
+                }
+            ]
+        }
+    };
+    
+    renderCanvas();
+    updateTemplateInfo();
+}
+
+async function loadEventTemplate() {
+    try {
+        const response = await fetch(`/api/templates/event/${currentEvent.id}`);
+        if (response.ok) {
+            const templates = await response.json();
+            if (templates.length > 0) {
+                currentDesignerTemplate = templates[0];
+            } else {
+                // Create new event template based on default
+                currentDesignerTemplate = {
+                    name: `${currentEvent.name} Template`,
+                    description: `Custom template for ${currentEvent.name}`,
+                    event_id: currentEvent.id,
+                    config: {
+                        width: 4,
+                        height: 6,
+                        foldOver: true,
+                        elements: []
+                    }
+                };
+            }
+        } else {
+            loadDefaultTemplate();
+        }
+    } catch (error) {
+        console.error('Failed to load event template:', error);
+        loadDefaultTemplate();
+    }
+    
+    renderCanvas();
+    updateTemplateInfo();
+}
+
+function renderCanvas() {
+    const canvas = document.getElementById('labelCanvas');
+    canvas.innerHTML = '';
+    
+    if (!currentDesignerTemplate || !currentDesignerTemplate.config.elements) {
+        return;
+    }
+    
+    currentDesignerTemplate.config.elements.forEach(element => {
+        const elementDiv = createCanvasElement(element);
+        canvas.appendChild(elementDiv);
+    });
+}
+
+function createCanvasElement(element) {
+    const div = document.createElement('div');
+    div.className = 'canvas-element';
+    div.id = `element-${element.id}`;
+    div.style.cssText = `
+        position: absolute;
+        left: ${element.x * 100}px;
+        top: ${element.y * 100}px;
+        width: ${element.width * 100}px;
+        height: ${element.height * 100}px;
+        border: 2px dashed #ccc;
+        cursor: pointer;
+        user-select: none;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        background: rgba(255, 255, 255, 0.9);
+        font-size: ${element.fontSize || 12}px;
+        font-weight: ${element.bold ? 'bold' : 'normal'};
+        text-align: ${element.align || 'left'};
+        color: ${element.color || '#000000'};
+    `;
+    
+    // Set content based on element type
+    if (element.type === 'text') {
+        div.textContent = element.content;
+    } else if (element.type === 'checkbox') {
+        div.innerHTML = `
+            <input type="checkbox" ${element.checked ? 'checked' : ''}>
+            <span>${element.label || ''}</span>
+        `;
+    }
+    
+    // Add click event for selection
+    div.addEventListener('click', (e) => {
+        e.stopPropagation();
+        selectElement(element);
+    });
+    
+    // Add drag functionality
+    div.draggable = true;
+    div.addEventListener('dragstart', (e) => {
+        e.dataTransfer.setData('text/plain', element.id);
+    });
+    
+    return div;
+}
+
+function selectElement(element) {
+    selectedElement = element;
+    
+    // Update visual selection
+    document.querySelectorAll('.canvas-element').forEach(el => {
+        el.style.border = '2px dashed #ccc';
+    });
+    
+    const selectedDiv = document.getElementById(`element-${element.id}`);
+    if (selectedDiv) {
+        selectedDiv.style.border = '2px solid #007bff';
+    }
+    
+    // Update properties panel
+    updatePropertiesPanel(element);
+}
+
+function updatePropertiesPanel(element) {
+    const propertiesPanel = document.getElementById('elementProperties');
+    
+    if (element.type === 'text') {
+        propertiesPanel.innerHTML = `
+            <div class="mb-2">
+                <label class="form-label">Content</label>
+                <input type="text" class="form-control" id="contentInput" value="${element.content || ''}">
+            </div>
+            <div class="mb-2">
+                <label class="form-label">CSV Field</label>
+                <select class="form-control" id="csvFieldInput">
+                    <option value="">-- Select CSV Field --</option>
+                    ${getAvailableCSVFields().map(field => 
+                        `<option value="{{${field}}}" ${element.content === `{{${field}}}` ? 'selected' : ''}>${field}</option>`
+                    ).join('')}
+                </select>
+                <small class="form-text text-muted">Select a CSV field to insert as placeholder</small>
+            </div>
+            <div class="mb-2">
+                <label class="form-label">Font Size</label>
+                <input type="number" class="form-control" id="fontSizeInput" value="${element.fontSize || 12}" min="8" max="72">
+            </div>
+            <div class="mb-2">
+                <label class="text-muted">Color</label>
+                <input type="color" class="form-control" id="colorInput" value="${element.color || '#000000'}">
+            </div>
+            <div class="mb-2">
+                <label class="form-label">Bold</label>
+                <input type="checkbox" id="boldInput" ${element.bold ? 'checked' : ''}>
+            </div>
+            <div class="mb-2">
+                <label class="form-label">Alignment</label>
+                <select class="form-control" id="alignInput">
+                    <option value="left" ${element.align === 'left' ? 'selected' : ''}>Left</option>
+                    <option value="center" ${element.align === 'center' ? 'selected' : ''}>Center</option>
+                    <option value="right" ${element.align === 'right' ? 'selected' : ''}>Right</option>
+                </select>
+            </div>
+            <div class="mb-2">
+                <label class="form-label">X Position</label>
+                <input type="number" class="form-control" id="xInput" value="${element.x}" step="0.1" min="0" max="4">
+            </div>
+            <div class="mb-2">
+                <div class="mb-2">
+                    <label class="form-label">Y Position</label>
+                    <input type="number" class="form-control" id="yInput" value="${element.y}" step="0.1" min="0" max="6">
+                </div>
+                <div class="mb-2">
+                    <label class="form-label">Width</label>
+                    <input type="number" class="form-control" id="widthInput" value="${element.width}" step="0.1" min="0.1" max="4">
+                </div>
+                <div class="mb-2">
+                    <label class="form-label">Height</label>
+                    <input type="number" class="form-control" id="heightInput" value="${element.height}" step="0.1" min="0.1" max="6">
+                </div>
+            </div>
+        `;
+        
+        // Add event listeners for property changes
+        setupPropertyListeners(element);
+    } else if (element.type === 'checkbox') {
+        propertiesPanel.innerHTML = `
+            <div class="mb-2">
+                <label class="form-label">Label</label>
+                <input type="text" class="form-control" id="labelInput" value="${element.label || ''}">
+            </div>
+            <div class="mb-2">
+                <label class="form-label">Color</label>
+                <input type="color" class="form-control" id="colorInput" value="${element.color || '#000000'}">
+            </div>
+            <div class="mb-2">
+                <label class="form-label">X Position</label>
+                <input type="number" class="form-control" id="xInput" value="${element.x}" step="0.1" min="0" max="4">
+            </div>
+            <div class="mb-2">
+                <label class="form-label">Y Position</label>
+                <input type="number" class="form-control" id="yInput" value="${element.y}" step="0.1" min="0" max="6">
+            </div>
+            <div class="mb-2">
+                <label class="form-label">Width</label>
+                <input type="number" class="form-control" id="widthInput" value="${element.width}" step="0.1" min="0.1" max="4">
+            </div>
+            <div class="mb-2">
+                <label class="form-label">Height</label>
+                <input type="number" class="form-control" id="heightInput" value="${element.height}" step="0.1" min="0.1" max="6">
+            </div>
+        `;
+        
+        setupPropertyListeners(element);
+    }
+}
+
+function setupPropertyListeners(element) {
+    // Content/Label
+    const contentInput = document.getElementById('contentInput') || document.getElementById('labelInput');
+    if (contentInput) {
+        contentInput.addEventListener('input', (e) => {
+            if (element.type === 'text') {
+                element.content = e.target.value;
+            } else if (element.type === 'checkbox') {
+                element.label = e.target.value;
+            }
+            renderCanvas();
+        });
+    }
+    
+    // CSV Field dropdown
+    const csvFieldInput = document.getElementById('csvFieldInput');
+    if (csvFieldInput) {
+        csvFieldInput.addEventListener('change', (e) => {
+            if (element.type === 'text' && e.target.value) {
+                element.content = e.target.value;
+                renderCanvas();
+            }
+        });
+    }
+    
+    // Font size
+    const fontSizeInput = document.getElementById('fontSizeInput');
+    if (fontSizeInput) {
+        fontSizeInput.addEventListener('input', (e) => {
+            element.fontSize = parseInt(e.target.value);
+            renderCanvas();
+        });
+    }
+    
+    // Color
+    const colorInput = document.getElementById('colorInput');
+    if (colorInput) {
+        colorInput.addEventListener('input', (e) => {
+            element.color = e.target.value;
+            renderCanvas();
+        });
+    }
+    
+    // Bold
+    const boldInput = document.getElementById('boldInput');
+    if (boldInput) {
+        boldInput.addEventListener('input', (e) => {
+            element.bold = e.target.checked;
+            renderCanvas();
+        });
+    }
+    
+    // Alignment
+    const alignInput = document.getElementById('alignInput');
+    if (alignInput) {
+        alignInput.addEventListener('change', (e) => {
+            element.align = e.target.value;
+            renderCanvas();
+        });
+    }
+    
+    // Position and size
+    ['x', 'y', 'width', 'height'].forEach(prop => {
+        const input = document.getElementById(`${prop}Input`);
+        if (input) {
+            input.addEventListener('input', (e) => {
+                element[prop] = parseFloat(e.target.value);
+                renderCanvas();
+            });
+        }
+    });
+}
+
+function setupToolButtons() {
+    // Add Text button
+    const addTextBtn = document.getElementById('addTextBtn');
+    if (addTextBtn) {
+        addTextBtn.addEventListener('click', () => {
+            addTextElement();
+        });
+    }
+    
+    // Add Checkbox button
+    const addCheckboxBtn = document.getElementById('addCheckboxBtn');
+    if (addCheckboxBtn) {
+        addCheckboxBtn.addEventListener('click', () => {
+            addCheckboxElement();
+        });
+    }
+    
+    // Delete button
+    const deleteElementBtn = document.getElementById('deleteElementBtn');
+    if (deleteElementBtn) {
+        deleteElementBtn.addEventListener('click', () => {
+            deleteSelectedElement();
+        });
+    }
+    
+    // Save Template button
+    const saveTemplateBtn = document.getElementById('saveTemplateBtn');
+    if (saveTemplateBtn) {
+        saveTemplateBtn.addEventListener('click', () => {
+            saveTemplate();
+        });
+    }
+}
+
+function addTextElement() {
+    const newElement = {
+        type: 'text',
+        id: `text-${Date.now()}`,
+        x: 0.5,
+        y: 0.5,
+        width: 2,
+        height: 0.5,
+        content: 'New Text',
+        fontSize: 16,
+        bold: false,
+        align: 'left',
+        color: '#000000'
+    };
+    
+    currentDesignerTemplate.config.elements.push(newElement);
+    renderCanvas();
+    selectElement(newElement);
+}
+
+// Get available CSV fields for the current event
+function getAvailableCSVFields() {
+    if (!currentEvent) return [];
+    
+    // Standard fields that are always available
+    const standardFields = [
+        'firstName', 'lastName', 'middleName', 'birthDate', 
+        'address', 'city', 'state', 'zip', 'phone', 'email',
+        'eventName', 'eventDate'
+    ];
+    
+    // Get custom fields from the current event's contacts
+    const customFields = [];
+    if (window.currentEventContacts && window.currentEventContacts.length > 0) {
+        const firstContact = window.currentEventContacts[0];
+        if (firstContact.custom_fields) {
+            try {
+                const parsed = JSON.parse(firstContact.custom_fields);
+                Object.keys(parsed).forEach(key => {
+                    if (!standardFields.includes(key)) {
+                        customFields.push(key);
+                    }
+                });
+            } catch (e) {
+                console.warn('Could not parse custom fields:', e);
+            }
+        }
+    }
+    
+    return [...standardFields, ...customFields];
+}
+
+function addCheckboxElement() {
+    const newElement = {
+        type: 'checkbox',
+        id: `checkbox-${Date.now()}`,
+        x: 0.5,
+        y: 0.5,
+        width: 0.3,
+        height: 0.3,
+        label: 'New Checkbox',
+        color: '#000000'
+    };
+    
+    currentDesignerTemplate.config.elements.push(newElement);
+    renderCanvas();
+    selectElement(newElement);
+}
+
+function deleteSelectedElement() {
+    if (!selectedElement) {
+        showError('No element selected');
+        return;
+    }
+    
+    const index = currentDesignerTemplate.config.elements.findIndex(el => el.id === selectedElement.id);
+    if (index > -1) {
+        currentDesignerTemplate.config.elements.splice(index, 1);
+        selectedElement = null;
+        renderCanvas();
+        document.getElementById('elementProperties').innerHTML = '<p class="text-muted">Select an element to edit its properties</p>';
+    }
+}
+
+function updateTemplateInfo() {
+    if (currentDesignerTemplate) {
+        document.getElementById('templateName').value = currentDesignerTemplate.name || '';
+        document.getElementById('templateDescription').value = currentDesignerTemplate.description || '';
+    }
+}
+
+async function saveTemplate() {
+    if (!currentDesignerTemplate) {
+        showError('No template to save');
+        return;
+    }
+    
+    // Update template info from form
+    currentDesignerTemplate.name = document.getElementById('templateName').value;
+    currentDesignerTemplate.description = document.getElementById('templateDescription').value;
+    
+    try {
+        if (currentDesignerTemplate.event_id) {
+            // Save as event-specific template
+            const response = await fetch(`/api/templates/event/${currentDesignerTemplate.event_id}`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(currentDesignerTemplate)
+            });
+            
+            if (response.ok) {
+                showSuccess('Event template saved successfully!');
+            } else {
+                showError('Failed to save event template');
+            }
+        } else {
+            // Save as general template
+            const response = await fetch('/api/templates', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(currentDesignerTemplate)
+            });
+            
+            if (response.ok) {
+                showSuccess('Template saved successfully!');
+            } else {
+                showError('Failed to save template');
+            }
+        }
+    } catch (error) {
+        console.error('Failed to save template:', error);
+        showError('Failed to save template');
+    }
+}
+
+function setupCanvasEventListeners() {
+    // Canvas click to deselect
+    const canvas = document.getElementById('labelCanvas');
+    canvas.addEventListener('click', () => {
+        selectedElement = null;
+        document.querySelectorAll('.canvas-element').forEach(el => {
+            el.style.border = '2px dashed #ccc';
+        });
+        document.getElementById('elementProperties').innerHTML = '<p class="text-muted">Select an element to edit its properties</p>';
+    });
 }
