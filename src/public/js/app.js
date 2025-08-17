@@ -193,19 +193,20 @@ async function loadEvents() {
                         historySection.style.display = 'none';
                     }
                 }
-                         } else {
-                 // No active events - show the most recent ended event as current
-                 const mostRecentEvent = events.sort((a, b) => new Date(b.date) - new Date(a.date))[0];
-                                 currentEvent = mostRecentEvent;
+                                     } else {
+                // No active events - show the most recent ended event as current
+                const mostRecentEvent = events.sort((a, b) => new Date(b.date) - new Date(a.date))[0];
+                currentEvent = mostRecentEvent;
                 updateEventDisplay();
-                loadStatistics();
+                // Don't load statistics for ended events - clear them instead
+                clearStats();
                 
                 // Load the event template
                 await loadEventTemplate();
                 
                 // Always show event history when no active events
                 showEventHistory(events);
-             }
+            }
         } else {
             // No events - clear everything
             currentEvent = null;
@@ -213,6 +214,7 @@ async function loadEvents() {
             updateEventDisplay();
             clearSearch();
             hideContactPanel();
+            clearStats(); // Clear stats when no events exist
             
             // Hide event history
             const historySection = document.getElementById('eventHistorySection');
@@ -359,6 +361,9 @@ async function endCurrentEvent() {
             // Clear search and hide contact panel
             clearSearch();
             hideContactPanel();
+            
+            // Clear stats since the event is now ended
+            clearStats();
         } else {
             const result = await response.json();
             showError(result.error || 'Failed to end event.');
@@ -484,6 +489,13 @@ async function loadStatistics() {
     } catch (error) {
         console.error('Failed to load statistics:', error);
     }
+}
+
+// Clear statistics display
+function clearStats() {
+    document.getElementById('totalContacts').textContent = '0';
+    document.getElementById('credentialedCount').textContent = '0';
+    document.getElementById('percentage').textContent = '0%';
 }
 
 // Search contacts
@@ -1022,29 +1034,71 @@ async function unCredential() {
 
 // Save contact changes
 async function saveContact() {
-    if (!currentContact) return;
-    
     try {
         const formData = new FormData(document.getElementById('contactForm'));
         const contactData = Object.fromEntries(formData.entries());
         
-        const response = await fetch(`/api/contacts/${currentContact.id}`, {
-            method: 'PUT',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(contactData)
-        });
+        let response;
         
-        if (response.ok) {
-            showSuccess('Contact updated successfully!');
-            // Refresh contact data
-            await selectContact(currentContact.id);
+        if (currentContact && currentContact.id && !currentContact.id.startsWith('new-contact-')) {
+            // Update existing contact
+            response = await fetch(`/api/contacts/${currentContact.id}`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(contactData)
+            });
+            
+            if (response.ok) {
+                showSuccess('Contact updated successfully!');
+                // Refresh contact data
+                await selectContact(currentContact.id);
+            } else {
+                const result = await response.json();
+                showError(result.error || 'Failed to update contact.');
+            }
         } else {
-            const result = await response.json();
-            showError(result.error || 'Failed to update contact.');
+            // Create new contact
+            if (!currentEvent) {
+                showError('Please select an event first.');
+                return;
+            }
+            
+            // Add event ID to contact data
+            contactData.event_id = currentEvent.id;
+            
+            response = await fetch(`/api/contacts/${currentEvent.id}`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(contactData)
+            });
+            
+            if (response.ok) {
+                const newContact = await response.json();
+                showSuccess('Contact added successfully!');
+                
+                // Set the new contact as current and refresh display
+                currentContact = newContact;
+                displayContact(newContact);
+                
+                // Show credential button for the new contact
+                document.getElementById('printBtn').style.display = 'block';
+                document.getElementById('unCredentialBtn').style.display = 'none';
+                
+                // Refresh statistics
+                loadStatistics();
+                
+                // Refresh search results to include the new contact
+                if (window.currentEventContacts) {
+                    window.currentEventContacts.push(newContact);
+                }
+            } else {
+                const result = await response.json();
+                showError(result.error || 'Failed to add contact.');
+            }
         }
     } catch (error) {
-        console.error('Failed to update contact:', error);
-        showError('Failed to update contact. Please try again.');
+        console.error('Failed to save contact:', error);
+        showError('Failed to save contact. Please try again.');
     }
 }
 
