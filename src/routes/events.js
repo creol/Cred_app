@@ -61,18 +61,27 @@ module.exports = function(database, config, logger, upload) {
   // Update event
   router.put('/:eventId', async (req, res) => {
     try {
-      const { name, date, description } = req.body;
+      const { name, date, description, template_id } = req.body;
       
-      if (!name || !date) {
-        return res.status(400).json({ error: 'Event name and date are required' });
+      // If updating basic event info, validate required fields
+      if (name !== undefined || date !== undefined) {
+        if (!name || !date) {
+          return res.status(400).json({ error: 'Event name and date are required' });
+        }
+
+        // Validate date format
+        if (!moment(date, moment.ISO_8601, true).isValid()) {
+          return res.status(400).json({ error: 'Invalid date format. Use ISO 8601 format (YYYY-MM-DD)' });
+        }
       }
 
-      // Validate date format
-      if (!moment(date, moment.ISO_8601, true).isValid()) {
-        return res.status(400).json({ error: 'Invalid date format. Use ISO 8601 format (YYYY-MM-DD)' });
-      }
+      const updateData = {};
+      if (name !== undefined) updateData.name = name;
+      if (date !== undefined) updateData.date = date;
+      if (description !== undefined) updateData.description = description;
+      if (template_id !== undefined) updateData.template_id = template_id;
 
-      const event = await database.updateEvent(req.params.eventId, { name, date, description });
+      const event = await database.updateEvent(req.params.eventId, updateData);
       
       logger.logEvent('event_updated', { eventId: event.id, eventName: event.name });
       

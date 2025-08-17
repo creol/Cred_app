@@ -6,8 +6,8 @@ let searchTimeout = null;
 
 // Initialize app
 document.addEventListener('DOMContentLoaded', function() {
-    loadEvents();
-    loadTemplates(); // Load templates on startup
+    loadEvents(); // This will call loadEventTemplate() when an event is loaded
+    // Don't call loadTemplates() here - it will be called after events are loaded
     setupEventListeners();
 });
 
@@ -129,21 +129,48 @@ function setupEventListeners() {
 
 // Load event template when event is loaded
 async function loadEventTemplate() {
-    if (!currentEvent) return;
+    if (!currentEvent) {
+        console.log('loadEventTemplate: No current event');
+        return;
+    }
+    
+    console.log('loadEventTemplate: Loading template for event:', currentEvent.name);
     
     try {
         const response = await fetch(`/api/templates/event/${currentEvent.id}`);
         if (response.ok) {
             const templates = await response.json();
+            console.log('loadEventTemplate: Found templates:', templates.length);
             if (templates.length > 0) {
                 // Set the event template as current template
                 currentTemplate = templates[0];
-                console.log('Loaded event template:', currentTemplate.name);
+                console.log('loadEventTemplate: Set event template:', currentTemplate.name, 'ID:', currentTemplate.id);
+            } else {
+                console.log('loadEventTemplate: No event-specific template, loading default');
+                // No event-specific template found, try to load default template
+                const defaultResponse = await fetch('/api/templates/default');
+                if (defaultResponse.ok) {
+                    currentTemplate = await defaultResponse.json();
+                    console.log('loadEventTemplate: Loaded default template:', currentTemplate.name, 'ID:', currentTemplate.id);
+                }
             }
         }
     } catch (error) {
-        console.warn('Failed to load event template:', error);
+        console.warn('loadEventTemplate: Failed to load event template:', error);
+        // Fallback to default template
+        try {
+            const defaultResponse = await fetch('/api/templates/default');
+            if (defaultResponse.ok) {
+                currentTemplate = await defaultResponse.json();
+                console.log('loadEventTemplate: Loaded default template as fallback:', currentTemplate.name, 'ID:', currentTemplate.id);
+            }
+        } catch (fallbackError) {
+            console.warn('loadEventTemplate: Failed to load default template as fallback:', fallbackError);
+        }
     }
+    
+    // Final check
+    console.log('loadEventTemplate: Final currentTemplate:', currentTemplate ? currentTemplate.name : 'null');
 }
 
 // Load sample contacts for CSV field dropdown
@@ -176,8 +203,11 @@ async function loadEvents() {
                 updateEventDisplay();
                 loadStatistics();
                 
-                // Load the event template
+                // Load the event template first
                 await loadEventTemplate();
+                
+                // Then load templates to update the display
+                await loadTemplates();
                 
                 // Load sample contacts for CSV field dropdown
                 loadSampleContacts(activeEvent.id);
@@ -193,7 +223,7 @@ async function loadEvents() {
                         historySection.style.display = 'none';
                     }
                 }
-                                     } else {
+            } else {
                 // No active events - show the most recent ended event as current
                 const mostRecentEvent = events.sort((a, b) => new Date(b.date) - new Date(a.date))[0];
                 currentEvent = mostRecentEvent;
@@ -201,8 +231,11 @@ async function loadEvents() {
                 // Don't load statistics for ended events - clear them instead
                 clearStats();
                 
-                // Load the event template
+                // Load the event template first
                 await loadEventTemplate();
+                
+                // Then load templates to update the display
+                await loadTemplates();
                 
                 // Always show event history when no active events
                 showEventHistory(events);
@@ -215,6 +248,9 @@ async function loadEvents() {
             clearSearch();
             hideContactPanel();
             clearStats(); // Clear stats when no events exist
+            
+            // Load templates to select default template
+            await loadTemplates();
             
             // Hide event history
             const historySection = document.getElementById('eventHistorySection');
@@ -1230,24 +1266,26 @@ async function selectTemplate(templateId) {
             const template = await response.json();
             currentTemplate = template;
             
-            // Save the selected template to the current event if we have one
+            // Associate the selected template with the current event (don't clone it)
             if (currentEvent) {
                 try {
                     const saveResponse = await fetch(`/api/templates/event/${currentEvent.id}`, {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify(template)
+                        body: JSON.stringify({ 
+                            template_id: template.id 
+                        })
                     });
                     
                     if (saveResponse.ok) {
-                        console.log('Template saved to event successfully');
-                        showSuccess(`Template "${template.name}" selected and saved to event!`);
+                        console.log('Template associated with event successfully');
+                        showSuccess(`Template "${template.name}" selected for event!`);
                     } else {
-                        console.warn('Failed to save template to event');
+                        console.warn('Failed to associate template with event');
                         showSuccess(`Template "${template.name}" selected!`);
                     }
                 } catch (e) {
-                    console.warn('Failed to save template to event:', e);
+                    console.warn('Failed to associate template with event:', e);
                     showSuccess(`Template "${template.name}" selected!`);
                 }
             } else {
@@ -1279,8 +1317,12 @@ async function selectTemplate(templateId) {
 // Load templates
 async function loadTemplates() {
     try {
+        console.log('loadTemplates: Starting, currentTemplate:', currentTemplate ? currentTemplate.name : 'null');
+        console.log('loadTemplates: currentEvent:', currentEvent ? currentEvent.name : 'null');
+        
         const response = await fetch('/api/templates');
         const templates = await response.json();
+        console.log('loadTemplates: Found', templates.length, 'templates');
         
         const templatesList = document.getElementById('templatesList');
         templatesList.innerHTML = templates.map(template => `
@@ -1312,12 +1354,19 @@ async function loadTemplates() {
             </div>
         `).join('');
         
-        // Automatically select the default template if none is selected
-        if (!currentTemplate && templates.length > 0) {
+        // Only auto-select default template if no event template is loaded
+        // Don't override the event template that was loaded in loadEventTemplate()
+        if (!currentTemplate && templates.length > 0 && !currentEvent) {
             const defaultTemplate = templates.find(t => t.is_default) || templates[0];
             currentTemplate = defaultTemplate;
-            console.log('Auto-selected template:', defaultTemplate.name);
+            console.log('loadTemplates: Auto-selected default template:', defaultTemplate.name);
+        } else if (currentTemplate) {
+            console.log('loadTemplates: Template already selected, not overriding:', currentTemplate.name, 'Event:', currentEvent ? currentEvent.name : 'none');
+        } else if (currentEvent) {
+            console.log('loadTemplates: Event loaded but no template found, will be loaded by loadEventTemplate');
         }
+        
+        console.log('loadTemplates: Final currentTemplate:', currentTemplate ? currentTemplate.name : 'null');
         
     } catch (error) {
         console.error('Failed to load templates:', error);
@@ -1657,25 +1706,26 @@ async function loadEventTemplate() {
             if (templates.length > 0) {
                 currentDesignerTemplate = templates[0];
             } else {
-                // Create new event template based on default
-                currentDesignerTemplate = {
-                    name: `${currentEvent.name} Template`,
-                    description: `Custom template for ${currentEvent.name}`,
-                    event_id: currentEvent.id,
-                    config: {
-                        width: 4,
-                        height: 6,
-                        foldOver: true,
-                        elements: []
-                    }
-                };
+                // No event-specific template found, try to load default template
+                const defaultResponse = await fetch('/api/templates/default');
+                if (defaultResponse.ok) {
+                    currentTemplate = await defaultResponse.json();
+                    console.log('Loaded default template for event:', currentTemplate.name);
+                }
             }
-        } else {
-            loadDefaultTemplate();
         }
     } catch (error) {
         console.error('Failed to load event template:', error);
-        loadDefaultTemplate();
+        // Fallback to default template
+        try {
+            const defaultResponse = await fetch('/api/templates/default');
+            if (defaultResponse.ok) {
+                currentTemplate = await defaultResponse.json();
+                console.log('Loaded default template as fallback:', currentTemplate.name);
+            }
+        } catch (fallbackError) {
+            console.warn('Failed to load default template as fallback:', fallbackError);
+        }
     }
     
     renderCanvas();

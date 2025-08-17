@@ -306,12 +306,35 @@ module.exports = function(database, config, logger) {
     }
   });
 
-  // Create event-specific template
+  // Create event-specific template or associate existing template with event
   router.post('/event/:eventId', async (req, res) => {
     try {
       const eventId = req.params.eventId;
-      const { name, description, config: templateConfig } = req.body;
+      const { name, description, config: templateConfig, template_id } = req.body;
       
+      // If template_id is provided, associate existing template with event
+      if (template_id) {
+        const existingTemplate = await database.getTemplate(template_id);
+        if (!existingTemplate) {
+          return res.status(404).json({ error: 'Template not found' });
+        }
+        
+        // Update the existing template to associate it with this event
+        await database.run('UPDATE templates SET event_id = ? WHERE id = ?', [eventId, template_id]);
+        
+        logger.logTemplateAction('template_associated_with_event', template_id, {
+          name: existingTemplate.name,
+          eventId: eventId
+        });
+
+        res.json({ 
+          message: 'Template associated with event successfully',
+          template: existingTemplate
+        });
+        return;
+      }
+      
+      // Otherwise, create a new event-specific template
       if (!name || !templateConfig) {
         return res.status(400).json({ error: 'Template name and configuration are required' });
       }
