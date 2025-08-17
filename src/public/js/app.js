@@ -127,6 +127,25 @@ function setupEventListeners() {
     });
 }
 
+// Load event template when event is loaded
+async function loadEventTemplate() {
+    if (!currentEvent) return;
+    
+    try {
+        const response = await fetch(`/api/templates/event/${currentEvent.id}`);
+        if (response.ok) {
+            const templates = await response.json();
+            if (templates.length > 0) {
+                // Set the event template as current template
+                currentTemplate = templates[0];
+                console.log('Loaded event template:', currentTemplate.name);
+            }
+        }
+    } catch (error) {
+        console.warn('Failed to load event template:', error);
+    }
+}
+
 // Load sample contacts for CSV field dropdown
 async function loadSampleContacts(eventId) {
     try {
@@ -157,6 +176,9 @@ async function loadEvents() {
                 updateEventDisplay();
                 loadStatistics();
                 
+                // Load the event template
+                await loadEventTemplate();
+                
                 // Load sample contacts for CSV field dropdown
                 loadSampleContacts(activeEvent.id);
                 
@@ -174,16 +196,20 @@ async function loadEvents() {
                          } else {
                  // No active events - show the most recent ended event as current
                  const mostRecentEvent = events.sort((a, b) => new Date(b.date) - new Date(a.date))[0];
-                 currentEvent = mostRecentEvent;
-                 updateEventDisplay();
-                 loadStatistics();
-                 
-                 // Always show event history when no active events
-                 showEventHistory(events);
+                                 currentEvent = mostRecentEvent;
+                updateEventDisplay();
+                loadStatistics();
+                
+                // Load the event template
+                await loadEventTemplate();
+                
+                // Always show event history when no active events
+                showEventHistory(events);
              }
         } else {
             // No events - clear everything
             currentEvent = null;
+            currentTemplate = null;
             updateEventDisplay();
             clearSearch();
             hideContactPanel();
@@ -1125,10 +1151,29 @@ async function selectTemplate(templateId) {
             const template = await response.json();
             currentTemplate = template;
             
-            // Don't create a new event template - just select the existing one
-            // The event will use the selected template for printing
-            
-            showSuccess(`Template "${template.name}" selected successfully!`);
+            // Save the selected template to the current event if we have one
+            if (currentEvent) {
+                try {
+                    const saveResponse = await fetch(`/api/templates/event/${currentEvent.id}`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(template)
+                    });
+                    
+                    if (saveResponse.ok) {
+                        console.log('Template saved to event successfully');
+                        showSuccess(`Template "${template.name}" selected and saved to event!`);
+                    } else {
+                        console.warn('Failed to save template to event');
+                        showSuccess(`Template "${template.name}" selected!`);
+                    }
+                } catch (e) {
+                    console.warn('Failed to save template to event:', e);
+                    showSuccess(`Template "${template.name}" selected!`);
+                }
+            } else {
+                showSuccess(`Template "${template.name}" selected successfully!`);
+            }
             
             // Close the templates modal
             const modal = bootstrap.Modal.getInstance(document.getElementById('templatesModal'));
@@ -1140,6 +1185,9 @@ async function selectTemplate(templateId) {
             if (currentContact) {
                 await generateLabelPreview(currentContact);
             }
+            
+            // Reload templates to update the display
+            await loadTemplates();
         } else {
             showError('Failed to load template.');
         }
@@ -1601,12 +1649,36 @@ function createCanvasElement(element) {
             <span>${element.label || ''}</span>
         `;
     } else if (element.type === 'image') {
-        const img = document.createElement('img');
-        img.src = element.imageUrl || '';
-        img.style.maxWidth = '100%';
-        img.style.maxHeight = '100%';
-        img.style.objectFit = 'contain';
-        div.appendChild(img);
+        if (element.imageUrl) {
+            const img = document.createElement('img');
+            img.src = element.imageUrl;
+            img.style.maxWidth = '100%';
+            img.style.maxHeight = '100%';
+            img.style.objectFit = 'contain';
+            img.style.display = 'block';
+            div.appendChild(img);
+            
+            // Add filename display below image
+            if (element.imageFileName) {
+                const filenameDiv = document.createElement('div');
+                filenameDiv.style.cssText = `
+                    position: absolute;
+                    bottom: -20px;
+                    left: 0;
+                    right: 0;
+                    font-size: 10px;
+                    color: #666;
+                    text-align: center;
+                    background: rgba(255,255,255,0.8);
+                    padding: 2px;
+                    border-radius: 2px;
+                `;
+                filenameDiv.textContent = element.imageFileName;
+                div.appendChild(filenameDiv);
+            }
+        } else {
+            div.innerHTML = '<i class="fas fa-image fa-2x text-muted"></i>';
+        }
     }
     
     // Add click event for selection
@@ -1741,6 +1813,10 @@ function updatePropertiesPanel(element) {
                 <input type="file" class="form-control" id="imageInput" accept="image/*">
                 <small class="form-text text-muted">Select a new image</small>
             </div>
+            ${element.imageFileName ? `<div class="mb-2">
+                <label class="form-label">Current Image</label>
+                <div class="form-control-plaintext">${element.imageFileName}</div>
+            </div>` : ''}
             <div class="mb-2">
                 <label class="form-label">X Position</label>
                 <input type="number" class="form-control" id="xInput" value="${element.x}" step="0.1" min="0" max="4">
@@ -1846,9 +1922,16 @@ function setupPropertyListeners(element) {
         imageInput.addEventListener('change', (e) => {
             const file = e.target.files[0];
             if (file && element.type === 'image') {
-                element.imageUrl = URL.createObjectURL(file);
-                element.imageFile = file;
-                renderCanvas();
+                // Convert file to base64 for persistence
+                const reader = new FileReader();
+                reader.onload = (e) => {
+                    const imageData = e.target.result;
+                    element.imageUrl = imageData;
+                    element.imageData = imageData;
+                    element.imageFileName = file.name;
+                    renderCanvas();
+                };
+                reader.readAsDataURL(file);
             }
         });
     }
@@ -1957,8 +2040,8 @@ async function getAvailableCSVFields() {
     // Get custom fields from all contacts in the current event
     const customFields = [];
     try {
-        // Get a larger sample of contacts to find all possible custom fields
-        const response = await fetch(`/api/contacts/search/${currentEvent.id}?q=&limit=100`);
+        // Get ALL contacts to find all possible custom fields
+        const response = await fetch(`/api/contacts/search/${currentEvent.id}?q=&limit=1000`);
         if (response.ok) {
             const contacts = await response.json();
             
@@ -1998,21 +2081,29 @@ function addImageElement() {
         const file = e.target.files[0];
         if (!file) return;
         
-        // Create a new image element
-        const newElement = {
-            type: 'image',
-            id: `image-${Date.now()}`,
-            x: 0.5,
-            y: 0.5,
-            width: 1,
-            height: 1,
-            imageUrl: URL.createObjectURL(file),
-            imageFile: file
+        // Convert file to base64 for persistence
+        const reader = new FileReader();
+        reader.onload = (e) => {
+            const imageData = e.target.result; // This is the data URL
+            
+            // Create a new image element
+            const newElement = {
+                type: 'image',
+                id: `image-${Date.now()}`,
+                x: 0.5,
+                y: 0.5,
+                width: 1,
+                height: 1,
+                imageUrl: imageData, // Store the data URL for display
+                imageData: imageData, // Store the data URL for PDF generation
+                imageFileName: file.name // Store the filename
+            };
+            
+            currentDesignerTemplate.config.elements.push(newElement);
+            renderCanvas();
+            selectElement(newElement);
         };
-        
-        currentDesignerTemplate.config.elements.push(newElement);
-        renderCanvas();
-        selectElement(newElement);
+        reader.readAsDataURL(file);
     };
     
     fileInput.click();
@@ -2302,11 +2393,33 @@ function generatePdf(template, contactData) {
                 doc.text(element.label, x + 25, y + 15);
             }
             
+        } else if (element.type === 'image' && element.imageData) {
+            // Handle image data (base64 or data URL)
+            try {
+                let imageData = element.imageData;
+                let imageType = 'PNG';
+                
+                // If it's a data URL, extract the base64 part
+                if (imageData.startsWith('data:')) {
+                    const parts = imageData.split(',');
+                    imageData = parts[1];
+                    imageType = parts[0].split(':')[1].split(';')[0].split('/')[1].toUpperCase();
+                }
+                
+                // Add image to PDF
+                doc.addImage(imageData, imageType, x, y, width, height);
+            } catch (error) {
+                console.error('Failed to add image to PDF:', error);
+                // Fallback to placeholder
+                doc.rect(x, y, width, height);
+                doc.setFontSize(10);
+                doc.text('[Image Error]', x + (width / 2), y + (height / 2), { align: 'center' });
+            }
         } else if (element.type === 'image') {
-            // For images, we'll add a placeholder rectangle
+            // Fallback for images without data
             doc.rect(x, y, width, height);
             doc.setFontSize(10);
-            doc.text('[Image]', x + (width / 2), y + (height / 2), { align: 'center' });
+            doc.text('[No Image]', x + (width / 2), y + (height / 2), { align: 'center' });
         }
     });
     
