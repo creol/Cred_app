@@ -389,19 +389,7 @@ class Database {
               align: 'center',
               color: '#000000'
             },
-            {
-              type: 'text',
-              id: 'title',
-              x: 0.5,
-              y: 2.3,
-              width: 3,
-              height: 0.6,
-              content: '{{title}}',
-              fontSize: 16,
-              bold: false,
-              align: 'center',
-              color: '#666666'
-            },
+
             {
               type: 'text',
               id: 'event',

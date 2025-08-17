@@ -269,7 +269,7 @@ module.exports = function(database, config, logger, upload) {
     }
   });
 
-  // Reset event (clear all contacts and credentials)
+  // Reset event (clear all credentials but keep contacts)
   router.post('/:eventId/reset', async (req, res) => {
     try {
       const eventId = req.params.eventId;
@@ -282,18 +282,18 @@ module.exports = function(database, config, logger, upload) {
       // Get current statistics before reset
       const stats = await database.getEventStatistics(eventId);
       
-      // Clear all contacts and credentials for this event
+      // Only clear credentials for this event (keep contacts)
       await database.run('DELETE FROM credentials WHERE event_id = ?', [eventId]);
-      await database.run('DELETE FROM contacts WHERE event_id = ?', [eventId]);
       
       logger.logEvent('event_reset', { 
         eventId, 
         eventName: event.name,
-        previousStats: stats 
+        previousStats: stats,
+        action: 'credentials_cleared_only'
       });
       
       res.json({ 
-        message: 'Event reset successfully',
+        message: 'Event reset successfully - contacts preserved, credentials cleared',
         previousStats: stats
       });
     } catch (error) {

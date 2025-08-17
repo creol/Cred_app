@@ -390,7 +390,6 @@ module.exports = function(database, config, logger) {
         firstName: 'John',
         lastName: 'Doe',
         middleName: 'M',
-        title: 'Event Coordinator',
         birthDate: '1990-01-15',
         address: '1234 Main St',
         city: 'Anytown',
