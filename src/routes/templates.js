@@ -3,6 +3,10 @@ const fs = require('fs-extra');
 const path = require('path');
 const { v4: uuidv4 } = require('uuid');
 const moment = require('moment');
+const database = require('../database/database');
+const logger = require('../utils/logger');
+
+console.log('🔥🔥🔥 TEMPLATES.JS FILE LOADED - VERSION WITH CLEANUP LOGIC 🔥🔥🔥');
 
 module.exports = function(database, config, logger) {
   const router = express.Router();
@@ -312,36 +316,148 @@ module.exports = function(database, config, logger) {
       const eventId = req.params.eventId;
       const { name, description, config: templateConfig, template_id } = req.body;
       
-      // If template_id is provided, associate existing template with event
+      console.log('Template association request:', { eventId, name, description, templateConfig, template_id });
+      
+      // If template_id is provided, create a new event-specific template based on the existing one
       if (template_id) {
+        console.log('Processing template_id association for template:', template_id);
+        
         const existingTemplate = await database.getTemplate(template_id);
         if (!existingTemplate) {
+          console.log('Template not found:', template_id);
           return res.status(404).json({ error: 'Template not found' });
         }
         
-        // Update the existing template to associate it with this event
-        await database.run('UPDATE templates SET event_id = ? WHERE id = ?', [eventId, template_id]);
+        console.log('Found existing template:', existingTemplate.name);
         
-        logger.logTemplateAction('template_associated_with_event', template_id, {
-          name: existingTemplate.name,
-          eventId: eventId
+        // Check if an event-specific template based on this template already exists
+        const existingEventTemplates = await database.getEventTemplates(eventId);
+        
+        // ALWAYS clean up old event-specific templates when switching to a new template
+        if (existingEventTemplates.length > 0) {
+          console.log('Cleaning up old event-specific templates before creating new one');
+          for (const oldTemplate of existingEventTemplates) {
+            try {
+              await database.run('DELETE FROM templates WHERE id = ?', [oldTemplate.id]);
+              console.log('Deleted old template:', oldTemplate.id, oldTemplate.name);
+            } catch (deleteError) {
+              console.warn('Failed to delete old template:', oldTemplate.id, deleteError.message);
+            }
+          }
+        }
+        
+        // After cleanup, fetch fresh list of event templates
+        const freshEventTemplates = await database.getEventTemplates(eventId);
+        console.log('After cleanup, fresh event templates count:', freshEventTemplates.length);
+        
+        // Look for templates that are based on the same original template
+        // We can identify this by checking if the config is identical (indicating it's a clone of the same template)
+        const existingEventTemplate = freshEventTemplates.find(t => {
+          // Check if config is identical (indicating it's a clone of the same template)
+          return JSON.stringify(t.config) === JSON.stringify(existingTemplate.config);
         });
+        
+        if (existingEventTemplate) {
+          console.log('Event-specific template already exists, returning existing one:', existingEventTemplate.id);
+          
+          // Update the existing template with a better name if it doesn't have one
+          if (!existingEventTemplate.name.includes(' - ') && !existingEventTemplate.name.includes('(')) {
+            const event = await database.getEvent(eventId);
+            if (event) {
+              const newName = `${existingEventTemplate.name} - ${event.name}`;
+              const newDescription = `${existingEventTemplate.description} (Event-specific copy)`;
+              
+              // Update the template name and description
+              await database.run(
+                'UPDATE templates SET name = ?, description = ? WHERE id = ?',
+                [newName, newDescription, existingEventTemplate.id]
+              );
+              
+              // Update the returned object
+              existingEventTemplate.name = newName;
+              existingEventTemplate.description = newDescription;
+              
+              console.log('Updated existing template name to:', newName);
+            }
+          }
+          
+          res.json({ 
+            message: 'Template already associated with event',
+            template: existingEventTemplate
+          });
+          return;
+        }
+        
+        // Create a new event-specific template based on the existing one
+        // Generate a unique name by adding event date if needed
+        let templateName = existingTemplate.name;
+        let templateDescription = existingTemplate.description;
+        
+        // If this is a duplicate name, add event date to make it unique
+        const duplicateCount = freshEventTemplates.filter(t => 
+          t.name === existingTemplate.name
+        ).length;
+        
+        if (duplicateCount > 0) {
+          const event = await database.getEvent(eventId);
+          if (event) {
+            const eventDate = new Date(event.date).toLocaleDateString();
+            templateName = `${existingTemplate.name} (${eventDate})`;
+            templateDescription = `${existingTemplate.description} - Event: ${event.name}`;
+          }
+        } else {
+          // Add event identifier to make it clear this is an event-specific copy
+          const event = await database.getEvent(eventId);
+          if (event) {
+            templateName = `${existingTemplate.name} - ${event.name}`;
+            templateDescription = `${existingTemplate.description} (Event-specific copy)`;
+          }
+        }
+        
+        const eventTemplateData = {
+          name: templateName,
+          description: templateDescription,
+          config: existingTemplate.config,
+          event_id: eventId
+        };
 
-        res.json({ 
-          message: 'Template associated with event successfully',
-          template: existingTemplate
-        });
-        return;
+        console.log('Creating event template with data:', eventTemplateData);
+        
+        try {
+          const savedEventTemplate = await database.createEventTemplate(eventId, eventTemplateData);
+          
+          console.log('Event template created successfully:', savedEventTemplate.id);
+          
+          logger.logTemplateAction('template_associated_with_event', savedEventTemplate.id, {
+            name: savedEventTemplate.name,
+            eventId: eventId,
+            basedOnTemplate: template_id
+          });
+
+          res.json({ 
+            message: 'Template associated with event successfully',
+            template: savedEventTemplate
+          });
+          return;
+        } catch (dbError) {
+          console.error('Database error creating event template:', dbError);
+          return res.status(500).json({ 
+            error: 'Failed to create event template',
+            details: dbError.message 
+          });
+        }
       }
       
       // Otherwise, create a new event-specific template
       if (!name || !templateConfig) {
+        console.log('Missing required fields:', { name: !!name, templateConfig: !!templateConfig });
         return res.status(400).json({ error: 'Template name and configuration are required' });
       }
 
       // Validate template configuration
       const validationResult = validateTemplateConfig(templateConfig);
       if (!validationResult.isValid) {
+        console.log('Template validation failed:', validationResult.errors);
         return res.status(400).json({ 
           error: 'Invalid template configuration', 
           details: validationResult.errors 

@@ -134,13 +134,17 @@ async function loadEventTemplate() {
         return;
     }
     
-    console.log('loadEventTemplate: Loading template for event:', currentEvent.name);
+    console.log('loadEventTemplate: Loading template for event:', currentEvent.name, 'ID:', currentEvent.id);
     
     try {
         const response = await fetch(`/api/templates/event/${currentEvent.id}`);
+        console.log('loadEventTemplate: Response status:', response.status);
+        
         if (response.ok) {
             const templates = await response.json();
             console.log('loadEventTemplate: Found templates:', templates.length);
+            console.log('loadEventTemplate: Template details:', templates);
+            
             if (templates.length > 0) {
                 // Set the event template as current template
                 currentTemplate = templates[0];
@@ -154,6 +158,9 @@ async function loadEventTemplate() {
                     console.log('loadEventTemplate: Loaded default template:', currentTemplate.name, 'ID:', currentTemplate.id);
                 }
             }
+        } else {
+            const errorText = await response.text();
+            console.error('loadEventTemplate: Failed to get event templates:', response.status, errorText);
         }
     } catch (error) {
         console.warn('loadEventTemplate: Failed to load event template:', error);
@@ -170,7 +177,7 @@ async function loadEventTemplate() {
     }
     
     // Final check
-    console.log('loadEventTemplate: Final currentTemplate:', currentTemplate ? currentTemplate.name : 'null');
+    console.log('loadEventTemplate: Final currentTemplate:', currentTemplate ? currentTemplate.name : 'null', 'ID:', currentTemplate ? currentTemplate.id : 'null');
 }
 
 // Load sample contacts for CSV field dropdown
@@ -1266,7 +1273,7 @@ async function selectTemplate(templateId) {
             const template = await response.json();
             currentTemplate = template;
             
-            // Associate the selected template with the current event (don't clone it)
+            // Associate the selected template with the current event (creates a new event-specific template)
             if (currentEvent) {
                 try {
                     const saveResponse = await fetch(`/api/templates/event/${currentEvent.id}`, {
@@ -1278,7 +1285,10 @@ async function selectTemplate(templateId) {
                     });
                     
                     if (saveResponse.ok) {
-                        console.log('Template associated with event successfully');
+                        const result = await saveResponse.json();
+                        // Update currentTemplate to the new event-specific template
+                        currentTemplate = result.template;
+                        console.log('Template associated with event successfully:', currentTemplate.name);
                         showSuccess(`Template "${template.name}" selected for event!`);
                     } else {
                         console.warn('Failed to associate template with event');
@@ -1305,6 +1315,14 @@ async function selectTemplate(templateId) {
             
             // Reload templates to update the display
             await loadTemplates();
+            
+            // Close the modal after everything is loaded
+            setTimeout(() => {
+                const modal = bootstrap.Modal.getInstance(document.getElementById('templatesModal'));
+                if (modal) {
+                    modal.hide();
+                }
+            }, 1000);
         } else {
             showError('Failed to load template.');
         }
@@ -1317,56 +1335,95 @@ async function selectTemplate(templateId) {
 // Load templates
 async function loadTemplates() {
     try {
-        console.log('loadTemplates: Starting, currentTemplate:', currentTemplate ? currentTemplate.name : 'null');
-        console.log('loadTemplates: currentEvent:', currentEvent ? currentEvent.name : 'null');
+        console.log('loadTemplates: Starting, currentTemplate:', currentTemplate ? currentTemplate.name : 'null', 'ID:', currentTemplate ? currentTemplate.id : 'null');
+        console.log('loadTemplates: currentEvent:', currentEvent ? currentEvent.name : 'null', 'ID:', currentEvent ? currentEvent.id : 'null');
         
         const response = await fetch('/api/templates');
         const templates = await response.json();
         console.log('loadTemplates: Found', templates.length, 'templates');
+        console.log('loadTemplates: Template IDs:', templates.map(t => ({ id: t.id, name: t.name, event_id: t.event_id })));
         
         const templatesList = document.getElementById('templatesList');
-        templatesList.innerHTML = templates.map(template => `
-            <div class="card mb-2 ${currentTemplate && currentTemplate.id === template.id ? 'border-success' : ''}">
-                <div class="card-body">
-                    <div class="d-flex justify-content-between align-items-center">
-                        <div>
-                            <h6 class="mb-1">${template.name}</h6>
-                            <small class="text-muted">${template.description}</small>
-                            ${currentTemplate && currentTemplate.id === template.id ? '<br><small class="text-success"><i class="fas fa-check-circle"></i> Currently Selected</small>' : ''}
+        if (templatesList) {
+            let html = '';
+            
+            // First, show the current event template at the top if it exists
+            if (currentTemplate && currentTemplate.event_id) {
+                html += `
+                    <div class="template-item current-event-template" data-template-id="${currentTemplate.id}">
+                        <div class="template-info">
+                            <h6 class="mb-1">
+                                <span class="badge bg-success me-2">Active</span>
+                                ${currentTemplate.name}
+                            </h6>
+                            <p class="text-muted mb-2">${currentTemplate.description}</p>
+                            <small class="text-muted">Event-specific template (read-only)</small>
                         </div>
-                        <div>
-                            ${template.is_default ? '<span class="badge bg-primary">Default</span>' : ''}
-                            ${currentTemplate && currentTemplate.id === template.id ? 
-                                '<span class="badge bg-success">Selected</span>' : 
-                                `<button class="btn btn-sm btn-success" onclick="selectTemplate('${template.id}')" title="Select this template for printing">
-                                    <i class="fas fa-check"></i> Select
-                                </button>`
-                            }
-                            <button class="btn btn-sm btn-outline-primary" onclick="editTemplate('${template.id}')">
-                                <i class="fas fa-edit"></i>
-                            </button>
-                            <button class="btn btn-sm btn-outline-danger" onclick="deleteTemplate('${template.id}')">
-                                <i class="fas fa-trash"></i>
+                        <div class="template-actions">
+                            <button class="btn btn-sm btn-outline-primary" onclick="selectTemplate('${currentTemplate.id}')" disabled>
+                                Selected
                             </button>
                         </div>
                     </div>
-                </div>
-            </div>
-        `).join('');
+                    <hr class="my-3">
+                `;
+            }
+            
+            // Then show all other templates
+            templates.forEach(template => {
+                // Skip the current event template since we already displayed it at the top
+                if (currentTemplate && currentTemplate.event_id && template.id === currentTemplate.id) {
+                    return;
+                }
+                
+                const isSelected = currentTemplate && currentTemplate.id === template.id;
+                const isEventTemplate = template.event_id;
+                
+                html += `
+                    <div class="template-item ${isSelected ? 'selected' : ''}" data-template-id="${template.id}">
+                        <div class="template-info">
+                            <h6 class="mb-1">
+                                ${template.name}
+                                ${isEventTemplate ? '<span class="badge bg-info ms-2">Event</span>' : ''}
+                            </h6>
+                            <p class="text-muted mb-2">${template.description}</p>
+                            <small class="text-muted">
+                                ${isEventTemplate ? 'Event-specific template' : 'General template'}
+                            </small>
+                        </div>
+                        <div class="template-actions">
+                            <button class="btn btn-sm btn-primary" onclick="selectTemplate('${template.id}')">
+                                ${isSelected ? 'Selected' : 'Select'}
+                            </button>
+                            ${!isEventTemplate ? `
+                                <button class="btn btn-sm btn-outline-secondary" onclick="editTemplate('${template.id}')">
+                                    Edit
+                                </button>
+                                <button class="btn btn-sm btn-outline-danger" onclick="deleteTemplate('${template.id}')">
+                                    Delete
+                                </button>
+                            ` : ''}
+                        </div>
+                    </div>
+                `;
+            });
+            
+            templatesList.innerHTML = html;
+        }
         
         // Only auto-select default template if no event template is loaded
         // Don't override the event template that was loaded in loadEventTemplate()
         if (!currentTemplate && templates.length > 0 && !currentEvent) {
             const defaultTemplate = templates.find(t => t.is_default) || templates[0];
             currentTemplate = defaultTemplate;
-            console.log('loadTemplates: Auto-selected default template:', defaultTemplate.name);
+            console.log('loadTemplates: Auto-selected default template:', defaultTemplate.name, 'ID:', defaultTemplate.id);
         } else if (currentTemplate) {
-            console.log('loadTemplates: Template already selected, not overriding:', currentTemplate.name, 'Event:', currentEvent ? currentEvent.name : 'none');
+            console.log('loadTemplates: Template already selected, not overriding:', currentTemplate.name, 'ID:', currentTemplate.id, 'Event:', currentEvent ? currentEvent.name : 'none');
         } else if (currentEvent) {
             console.log('loadTemplates: Event loaded but no template found, will be loaded by loadEventTemplate');
         }
         
-        console.log('loadTemplates: Final currentTemplate:', currentTemplate ? currentTemplate.name : 'null');
+        console.log('loadTemplates: Final currentTemplate:', currentTemplate ? currentTemplate.name : 'null', 'ID:', currentTemplate ? currentTemplate.id : 'null');
         
     } catch (error) {
         console.error('Failed to load templates:', error);
@@ -2256,8 +2313,23 @@ async function saveTemplate() {
     currentDesignerTemplate.description = document.getElementById('templateDescription').value;
     
     try {
-        if (currentDesignerTemplate.event_id) {
-            // Save as event-specific template
+        if (currentDesignerTemplate.event_id && currentDesignerTemplate.id && currentDesignerTemplate.id !== 'default-template') {
+            // Update existing event-specific template
+            const response = await fetch(`/api/templates/${currentDesignerTemplate.id}`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(currentDesignerTemplate)
+            });
+            
+            if (response.ok) {
+                showSuccess('Event template updated successfully!');
+                // Reload templates to refresh the display
+                loadTemplates();
+            } else {
+                showError('Failed to update event template');
+            }
+        } else if (currentDesignerTemplate.event_id) {
+            // Save as new event-specific template
             const response = await fetch(`/api/templates/event/${currentDesignerTemplate.event_id}`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
