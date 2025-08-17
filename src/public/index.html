@@ -65,6 +65,63 @@
         .badge.bg-info {
             background-color: #17a2b8 !important;
         }
+        
+        /* Fold-over badge styling */
+        .fold-line {
+            position: absolute;
+            left: 0;
+            right: 0;
+            top: 300px;
+            height: 2px;
+            background: linear-gradient(90deg, transparent 0%, #ff6b6b 20%, #ff6b6b 80%, transparent 100%);
+            border-top: 2px dashed #ff6b6b;
+            z-index: 1000;
+        }
+        
+        .badge-half {
+            position: absolute;
+            width: 100%;
+            height: 50%;
+            pointer-events: none;
+            z-index: 999;
+            transition: opacity 0.3s ease;
+        }
+        
+        .badge-half.top-half {
+            top: 0;
+            border-bottom: 1px solid #ddd;
+            background: linear-gradient(180deg, rgba(255, 255, 255, 0.1) 0%, transparent 100%);
+        }
+        
+        .badge-half.bottom-half {
+            bottom: 0;
+            border-top: 1px solid #ddd;
+            background: linear-gradient(0deg, rgba(255, 255, 255, 0.1) 0%, transparent 100%);
+        }
+        
+        .badge-half:hover {
+            opacity: 0.8;
+        }
+        
+        .badge-half .half-label {
+            position: absolute;
+            font-size: 10px;
+            color: #999;
+            background: rgba(255, 255, 255, 0.9);
+            padding: 2px 6px;
+            border-radius: 3px;
+            font-weight: 500;
+        }
+        
+        .badge-half.top-half .half-label {
+            bottom: 5px;
+            left: 5px;
+        }
+        
+        .badge-half.bottom-half .half-label {
+            top: 5px;
+            left: 5px;
+        }
     </style>
 </head>
 <body>
@@ -342,6 +399,15 @@
                                         <button class="btn btn-outline-primary btn-sm" id="addCheckboxBtn">
                                             <i class="fas fa-check-square"></i> Add Checkbox
                                         </button>
+                                        <button class="btn btn-outline-primary btn-sm" id="addLineBtn">
+                                            <i class="fas fa-minus"></i> Add Line
+                                        </button>
+                                        <button class="btn btn-outline-primary btn-sm" id="addSquareBtn">
+                                            <i class="fas fa-square"></i> Add Square
+                                        </button>
+                                        <button class="btn btn-outline-primary btn-sm" id="addTextAreaBtn">
+                                            <i class="fas fa-paragraph"></i> Add Text Area
+                                        </button>
                                         <button class="btn btn-outline-danger btn-sm" id="deleteElementBtn">
                                             <i class="fas fa-trash"></i> Delete
                                         </button>
@@ -367,6 +433,9 @@
                                     <div>
                                         <button class="btn btn-outline-secondary btn-sm" id="previewBtn">
                                             <i class="fas fa-eye"></i> Preview
+                                        </button>
+                                        <button class="btn btn-outline-warning btn-sm" id="foldPreviewBtn">
+                                            <i class="fas fa-undo"></i> Fold Preview
                                         </button>
                                         <button class="btn btn-outline-primary btn-sm" id="testPrintBtn">
                                             <i class="fas fa-print"></i> Test Print
