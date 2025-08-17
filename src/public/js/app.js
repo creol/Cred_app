@@ -697,6 +697,9 @@ function displayContact(contact) {
     
     // Display all CSV fields including custom fields
     displayAllContactFields(contact);
+    
+    // Generate label preview for this contact
+    generateLabelPreview(contact);
 }
 
 // Hide contact panel
