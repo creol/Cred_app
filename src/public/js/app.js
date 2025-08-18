@@ -648,13 +648,8 @@ async function selectContact(contactId) {
         currentContact = contact;
         displayContact(contact);
         
-        // Generate label preview (but don't fail if it doesn't work)
-        try {
-            await generateLabelPreview(contact);
-        } catch (previewError) {
-            console.error('Label preview failed:', previewError);
-            // Continue with contact display even if preview fails
-        }
+        // No longer generating label preview here since we removed the preview section
+        // Users can click "Detailed Preview" button instead
         
         // Hide search results when contact is selected
         hideSearchResults();
@@ -744,8 +739,8 @@ function displayContact(contact) {
     // Display all CSV fields including custom fields
     displayAllContactFields(contact);
     
-    // Generate label preview for this contact
-    generateLabelPreview(contact);
+    // No longer generating label preview here since we removed the preview section
+    // Users can click "Detailed Preview" button instead
 }
 
 // Hide contact panel
@@ -855,6 +850,16 @@ async function generateLabelPreview(contact) {
             eventDate: currentEvent ? currentEvent.date : ''
         };
         
+        // Add custom fields from CSV
+        if (contact.custom_fields) {
+            try {
+                const customFields = JSON.parse(contact.custom_fields);
+                Object.assign(previewData, customFields);
+            } catch (e) {
+                console.warn('Failed to parse custom fields for preview:', e);
+            }
+        }
+        
         console.log('Preview data:', previewData);
         console.log('Calling preview endpoint for template:', currentTemplate.id);
         
@@ -937,6 +942,18 @@ function showDetailedPreview() {
         return;
     }
     
+    console.log('=== Detailed Preview Debug ===');
+    console.log('Current Contact:', currentContact);
+    console.log('Current Template:', currentTemplate);
+    console.log('Template Elements:', currentTemplate.config.elements);
+    
+    // Log the content of each text element to see what placeholders exist
+    currentTemplate.config.elements.forEach((element, index) => {
+        if (element.type === 'text') {
+            console.log(`Element ${index} content: "${element.content}"`);
+        }
+    });
+    
     // Create contact data for preview
     const contactData = {
         firstName: currentContact.first_name || '',
@@ -952,6 +969,18 @@ function showDetailedPreview() {
         eventName: currentEvent ? currentEvent.name : '',
         eventDate: currentEvent ? currentEvent.date : ''
     };
+    
+    // Add custom fields from CSV
+    if (currentContact.custom_fields) {
+        try {
+            const customFields = JSON.parse(currentContact.custom_fields);
+            Object.assign(contactData, customFields);
+        } catch (e) {
+            console.warn('Failed to parse custom fields for detailed preview:', e);
+        }
+    }
+    
+    console.log('Final Contact Data for PDF:', contactData);
     
     // Generate PDF preview
     const pdfBlob = generatePdf(currentTemplate, contactData);
@@ -997,6 +1026,19 @@ async function printCredential() {
             eventName: currentEvent.name || '',
             eventDate: currentEvent.date || ''
         };
+        
+        // Add custom fields from CSV
+        if (currentContact.custom_fields) {
+            try {
+                const customFields = JSON.parse(currentContact.custom_fields);
+                Object.assign(pdfContactData, customFields);
+                console.log('Added custom fields to PDF data:', customFields);
+            } catch (e) {
+                console.warn('Failed to parse custom fields for printing:', e);
+            }
+        }
+        
+        console.log('Final PDF Contact Data:', pdfContactData);
         
         // Generate PDF for printing
         const pdfBlob = generatePdf(currentTemplate, pdfContactData);
@@ -2192,20 +2234,8 @@ function updatePropertiesPanel(element) {
     } else if (element.type === 'textArea') {
         propertiesPanel.innerHTML = `
             <div class="mb-2">
-                <label class="form-label">Content</label>
-                <textarea class="form-control" id="contentInput" rows="3">${element.content || ''}</textarea>
-            </div>
-            <div class="mb-2">
-                <label class="form-label">Font Size</label>
-                <input type="number" class="form-control" id="fontSizeInput" value="${element.fontSize || 14}" min="8" max="72">
-            </div>
-            <div class="mb-2">
-                <label class="form-label">Text Color</label>
-                <input type="color" class="form-control" id="colorInput" value="${element.color || '#000000'}">
-            </div>
-            <div class="mb-2">
                 <label class="form-label">Background Color</label>
-                <input type="color" class="form-control" id="backgroundColorInput" value="${element.backgroundColor || 'transparent'}">
+                <input type="color" class="form-control" id="backgroundColorInput" value="${element.backgroundColor || '#ffffff'}">
             </div>
             <div class="mb-2">
                 <label class="form-label">Border Color</label>
@@ -2214,34 +2244,6 @@ function updatePropertiesPanel(element) {
             <div class="mb-2">
                 <label class="form-label">Border Width</label>
                 <input type="number" class="form-control" id="borderWidthInput" value="${element.borderWidth || 1}" min="0" max="10">
-            </div>
-            <div class="mb-2">
-                <label class="form-label">Bold</label>
-                <input type="checkbox" id="boldInput" ${element.bold ? 'checked' : ''}>
-            </div>
-            <div class="mb-2">
-                <label class="form-label">Alignment</label>
-                <select class="form-control" id="alignInput">
-                    <option value="left" ${element.align === 'left' ? 'selected' : ''}>Left</option>
-                    <option value="center" ${element.align === 'center' ? 'selected' : ''}>Center</option>
-                    <option value="right" ${element.align === 'right' ? 'selected' : ''}>Right</option>
-                </select>
-            </div>
-            <div class="mb-2">
-                <label class="form-label">X Position</label>
-                <input type="number" class="form-control" id="xInput" value="${element.x}" step="0.1" min="0" max="4">
-            </div>
-            <div class="mb-2">
-                <label class="form-label">Y Position</label>
-                <input type="number" class="form-control" id="yInput" value="${element.y}" step="0.1" min="0" max="6">
-            </div>
-            <div class="mb-2">
-                <label class="form-label">Width</label>
-                <input type="number" class="form-control" id="widthInput" value="${element.width}" step="0.1" min="0.1" max="4">
-            </div>
-            <div class="mb-2">
-                <label class="form-label">Height</label>
-                <input type="number" class="form-control" id="heightInput" value="${element.height}" step="0.1" min="0.1" max="6">
             </div>
         `;
         
@@ -2667,7 +2669,37 @@ async function getAvailableCSVFields() {
         'eventName', 'eventDate'
     ];
     
-    // Get custom fields from all contacts in the current event
+    // Get CSV headers directly from the import records
+    let csvHeaders = [];
+    try {
+        const response = await fetch(`/api/events/${currentEvent.id}/csv-headers`);
+        if (response.ok) {
+            const result = await response.json();
+            csvHeaders = result.headers || [];
+        } else {
+            console.warn('Failed to get CSV headers, falling back to contact-based field extraction');
+            // Fallback to the old method if the new API fails
+            csvHeaders = await getCSVFieldsFromContacts();
+        }
+    } catch (error) {
+        console.warn('Failed to get CSV headers, falling back to contact-based field extraction:', error);
+        // Fallback to the old method if the new API fails
+        csvHeaders = await getCSVFieldsFromContacts();
+    }
+    
+    // Combine standard fields with CSV headers, removing duplicates
+    const allFields = [...standardFields];
+    csvHeaders.forEach(header => {
+        if (!allFields.includes(header)) {
+            allFields.push(header);
+        }
+    });
+    
+    return allFields;
+}
+
+// Fallback function to get CSV fields from contacts (old method)
+async function getCSVFieldsFromContacts() {
     const customFields = [];
     try {
         // Get ALL contacts to find all possible custom fields
@@ -2682,9 +2714,7 @@ async function getAvailableCSVFields() {
                     try {
                         const parsed = JSON.parse(contact.custom_fields);
                         Object.keys(parsed).forEach(key => {
-                            if (!standardFields.includes(key)) {
-                                allCustomFields.add(key);
-                            }
+                            allCustomFields.add(key);
                         });
                     } catch (e) {
                         console.warn('Could not parse custom fields for contact:', e);
@@ -2699,7 +2729,7 @@ async function getAvailableCSVFields() {
         console.warn('Failed to load contacts for CSV fields:', error);
     }
     
-    return [...standardFields, ...customFields];
+    return customFields;
 }
 
 function addImageElement() {
@@ -2943,7 +2973,15 @@ function generatePdfPreview() {
             phone: '(555) 123-4567',
             email: 'john.doe@example.com',
             eventName: 'Sample Event',
-            eventDate: '2024-01-01'
+            eventDate: '2024-01-01',
+            // Add some sample custom fields that might be common in CSV imports
+            organization: 'Sample Corp',
+            title: 'Manager',
+            department: 'Sales',
+            badge_number: 'BN001',
+            dietary_restrictions: 'None',
+            emergency_contact: 'Jane Doe',
+            emergency_phone: '(555) 987-6543'
         };
         
         // Generate the PDF preview
@@ -2967,6 +3005,12 @@ function generatePdf(template, contactData) {
         format: [288, 432] // 4" x 6"
     });
     
+    // Debug: Log the contact data and template
+    console.log('=== PDF Generation Debug ===');
+    console.log('Template:', template);
+    console.log('Contact Data:', contactData);
+    console.log('Contact Data Keys:', Object.keys(contactData));
+    
     // Set default font
     doc.setFont('helvetica');
     
@@ -2989,20 +3033,79 @@ function generatePdf(template, contactData) {
         if (element.type === 'text') {
             // Process text content with placeholders
             let content = element.content || '';
+            console.log(`Processing text element: "${content}"`);
             
-            // Replace placeholders with actual data
-            content = content.replace(/\{\{firstName\}\}/g, contactData.firstName || '');
-            content = content.replace(/\{\{lastName\}\}/g, contactData.lastName || '');
-            content = content.replace(/\{\{middleName\}\}/g, contactData.middleName || '');
-            content = content.replace(/\{\{birthDate\}\}/g, contactData.birthDate || '');
-            content = content.replace(/\{\{address\}\}/g, contactData.address || '');
-            content = content.replace(/\{\{city\}\}/g, contactData.city || '');
-            content = content.replace(/\{\{state\}\}/g, contactData.state || '');
-            content = content.replace(/\{\{zip\}\}/g, contactData.zip || '');
-            content = content.replace(/\{\{phone\}\}/g, contactData.phone || '');
-            content = content.replace(/\{\{email\}\}/g, contactData.email || '');
-            content = content.replace(/\{\{eventName\}\}/g, contactData.eventName || '');
-            content = content.replace(/\{\{eventDate\}\}/g, contactData.eventDate || '');
+            // Replace all placeholders with actual data using a more flexible approach
+            content = content.replace(/\{\{(\w+)\}\}/g, (match, fieldName) => {
+                console.log(`Replacing placeholder: ${match} with field: ${fieldName}`);
+                
+                // Convert field name to camelCase for standard fields
+                const camelCaseField = fieldName.replace(/([-_][a-z])/g, (g) => g[1].toUpperCase());
+                console.log(`CamelCase field: ${camelCaseField}`);
+                
+                // Check if it's a standard field first (camelCase)
+                if (contactData[camelCaseField] !== undefined) {
+                    console.log(`Found in standard fields (camelCase): ${contactData[camelCaseField]}`);
+                    return contactData[camelCaseField] || '';
+                }
+                
+                // Check if it's a direct field match
+                if (contactData[fieldName] !== undefined) {
+                    console.log(`Found in direct fields: ${contactData[fieldName]}`);
+                    return contactData[fieldName] || '';
+                }
+                
+                // Check if it's in custom fields
+                if (contactData.custom_fields) {
+                    try {
+                        const customFields = JSON.parse(contactData.custom_fields);
+                        console.log('Custom fields:', customFields);
+                        if (customFields[fieldName] !== undefined) {
+                            console.log(`Found in custom fields: ${customFields[fieldName]}`);
+                            return customFields[fieldName] || '';
+                        }
+                    } catch (e) {
+                        console.warn('Failed to parse custom fields for PDF generation:', e);
+                    }
+                }
+                
+                // Try to find a field that matches ignoring case and special characters
+                const allKeys = Object.keys(contactData);
+                const normalizedFieldName = fieldName.toLowerCase().replace(/[^a-z0-9]/g, '');
+                
+                for (const key of allKeys) {
+                    const normalizedKey = key.toLowerCase().replace(/[^a-z0-9]/g, '');
+                    if (normalizedKey === normalizedFieldName) {
+                        console.log(`Found field by normalized match: ${key} = ${contactData[key]}`);
+                        return contactData[key] || '';
+                    }
+                }
+                
+                // Check custom fields with normalized matching
+                if (contactData.custom_fields) {
+                    try {
+                        const customFields = JSON.parse(contactData.custom_fields);
+                        const customKeys = Object.keys(customFields);
+                        
+                        for (const key of customKeys) {
+                            const normalizedKey = key.toLowerCase().replace(/[^a-z0-9]/g, '');
+                            if (normalizedKey === normalizedFieldName) {
+                                console.log(`Found custom field by normalized match: ${key} = ${customFields[key]}`);
+                                return customFields[key] || '';
+                            }
+                        }
+                    } catch (e) {
+                        console.warn('Failed to parse custom fields for normalized matching:', e);
+                    }
+                }
+                
+                console.log(`No match found for field: ${fieldName}, returning original placeholder`);
+                console.log(`Available keys:`, Object.keys(contactData));
+                // Return the original placeholder if no match found
+                return match;
+            });
+            
+            console.log(`Final content after replacement: "${content}"`);
             
             // Set font properties
             const fontSize = element.fontSize || 12;
@@ -3032,7 +3135,6 @@ function generatePdf(template, contactData) {
             
             // Reset font to normal
             doc.setFont('helvetica', 'normal');
-            
         } else if (element.type === 'checkbox') {
             // Draw checkbox
             doc.rect(x, y, 20, 20);
@@ -3203,19 +3305,36 @@ function generatePdf(template, contactData) {
             // Draw text content
             let content = element.content || '';
             
-            // Replace placeholders with actual data
-            content = content.replace(/\{\{firstName\}\}/g, contactData.firstName || '');
-            content = content.replace(/\{\{lastName\}\}/g, contactData.lastName || '');
-            content = content.replace(/\{\{middleName\}\}/g, contactData.middleName || '');
-            content = content.replace(/\{\{birthDate\}\}/g, contactData.birthDate || '');
-            content = content.replace(/\{\{address\}\}/g, contactData.address || '');
-            content = content.replace(/\{\{city\}\}/g, contactData.city || '');
-            content = content.replace(/\{\{state\}\}/g, contactData.state || '');
-            content = content.replace(/\{\{zip\}\}/g, contactData.zip || '');
-            content = content.replace(/\{\{phone\}\}/g, contactData.phone || '');
-            content = content.replace(/\{\{email\}\}/g, contactData.email || '');
-            content = content.replace(/\{\{eventName\}\}/g, contactData.eventName || '');
-            content = content.replace(/\{\{eventDate\}\}/g, contactData.eventDate || '');
+            // Replace placeholders with actual data using the same logic as text elements
+            content = content.replace(/\{\{(\w+)\}\}/g, (match, fieldName) => {
+                // Convert field name to camelCase for standard fields
+                const camelCaseField = fieldName.replace(/([-_][a-z])/g, (g) => g[1].toUpperCase());
+                
+                // Check if it's a standard field first
+                if (contactData[camelCaseField] !== undefined) {
+                    return contactData[camelCaseField] || '';
+                }
+                
+                // Check if it's a direct field match
+                if (contactData[fieldName] !== undefined) {
+                    return contactData[fieldName] || '';
+                }
+                
+                // Check if it's in custom fields
+                if (contactData.custom_fields) {
+                    try {
+                        const customFields = JSON.parse(contactData.custom_fields);
+                        if (customFields[fieldName] !== undefined) {
+                            return customFields[fieldName] || '';
+                        }
+                    } catch (e) {
+                        console.warn('Failed to parse custom fields for PDF generation:', e);
+                    }
+                }
+                
+                // Return the original placeholder if no match found
+                return match;
+            });
             
             // Set font properties
             const fontSize = element.fontSize || 14;
@@ -3322,3 +3441,53 @@ function setupPdfModalButtons() {
         });
     }
 }
+
+// Debug function to show all available fields
+function debugAvailableFields() {
+    console.log('=== DEBUG: Available Fields ===');
+    
+    if (!currentTemplate) {
+        console.log('No current template loaded');
+        return;
+    }
+    
+    console.log('Template:', currentTemplate.name);
+    console.log('Template Elements:');
+    currentTemplate.config.elements.forEach((element, index) => {
+        if (element.type === 'text') {
+            console.log(`  Element ${index}: "${element.content}"`);
+            // Extract all placeholders from this element
+            const placeholders = element.content.match(/\{\{(\w+)\}\}/g);
+            if (placeholders) {
+                console.log(`    Placeholders: ${placeholders.join(', ')}`);
+            }
+        }
+    });
+    
+    if (!currentContact) {
+        console.log('No current contact loaded');
+        return;
+    }
+    
+    console.log('Contact Data:');
+    console.log('  Standard fields:', {
+        firstName: currentContact.first_name,
+        lastName: currentContact.last_name,
+        email: currentContact.email,
+        phone: currentContact.phone
+    });
+    
+    if (currentContact.custom_fields) {
+        try {
+            const customFields = JSON.parse(currentContact.custom_fields);
+            console.log('  Custom fields:', customFields);
+        } catch (e) {
+            console.log('  Failed to parse custom fields:', e);
+        }
+    }
+    
+    console.log('=== END DEBUG ===');
+}
+
+// Add this to the global scope so it can be called from console
+window.debugAvailableFields = debugAvailableFields;

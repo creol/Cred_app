@@ -345,6 +345,46 @@ module.exports = function(database, config, logger, upload) {
     }
   });
 
+  // Get CSV headers for event
+  router.get('/:eventId/csv-headers', async (req, res) => {
+    try {
+      const eventId = req.params.eventId;
+      const csvImport = await database.get(`
+        SELECT headers, original_filename, import_date 
+        FROM csv_imports 
+        WHERE event_id = ? 
+        ORDER BY import_date DESC 
+        LIMIT 1
+      `, [eventId]);
+      
+      if (!csvImport) {
+        return res.status(404).json({ error: 'No CSV import found for this event' });
+      }
+
+      let headers = [];
+      try {
+        headers = JSON.parse(csvImport.headers);
+      } catch (e) {
+        logger.warn('Failed to parse CSV headers from database', { 
+          error: e.message, 
+          eventId: req.params.eventId 
+        });
+      }
+
+      res.json({
+        headers: headers,
+        originalFilename: csvImport.original_filename,
+        importDate: csvImport.import_date
+      });
+    } catch (error) {
+      logger.error('Failed to get CSV headers', { 
+        error: error.message, 
+        eventId: req.params.eventId 
+      });
+      res.status(500).json({ error: 'Failed to get CSV headers' });
+    }
+  });
+
   // End event (set status to ended)
   router.put('/:eventId/end', async (req, res) => {
     try {

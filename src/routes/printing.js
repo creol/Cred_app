@@ -317,9 +317,35 @@ module.exports = function(database, config, logger) {
         const processedElement = { ...element };
         
         if (element.type === 'text' && element.content) {
-          // Replace template variables with actual data
-          processedElement.previewContent = element.content.replace(/\{\{(\w+)\}\}/g, (match, field) => {
-            return labelData[field] || match;
+          // Replace template variables with actual data using improved logic
+          processedElement.previewContent = element.content.replace(/\{\{(\w+)\}\}/g, (match, fieldName) => {
+            // Convert field name to camelCase for standard fields
+            const camelCaseField = fieldName.replace(/([-_][a-z])/g, (g) => g[1].toUpperCase());
+            
+            // Check if it's a standard field first (camelCase)
+            if (labelData[camelCaseField] !== undefined) {
+              return labelData[camelCaseField] || '';
+            }
+            
+            // Check if it's a direct field match
+            if (labelData[fieldName] !== undefined) {
+              return labelData[fieldName] || '';
+            }
+            
+            // Check if it's in custom fields
+            if (labelData.custom_fields) {
+              try {
+                const customFields = JSON.parse(labelData.custom_fields);
+                if (customFields[fieldName] !== undefined) {
+                  return customFields[fieldName] || '';
+                }
+              } catch (e) {
+                console.warn('Failed to parse custom fields for printing preview:', e);
+              }
+            }
+            
+            // Return the original placeholder if no match found
+            return match;
           });
         }
         

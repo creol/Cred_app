@@ -619,9 +619,35 @@ module.exports = function(database, config, logger) {
       elements: templateConfig.elements.map(element => ({
         ...element,
         previewContent: element.type === 'text' ? 
-          (element.content || '').replace(/\{\{(\w+)\}\}/g, (match, field) => 
-            sampleData[field] || match
-          ) : element
+          (element.content || '').replace(/\{\{(\w+)\}\}/g, (match, fieldName) => {
+            // Convert field name to camelCase for standard fields
+            const camelCaseField = fieldName.replace(/([-_][a-z])/g, (g) => g[1].toUpperCase());
+            
+            // Check if it's a standard field first (camelCase)
+            if (sampleData[camelCaseField] !== undefined) {
+              return sampleData[camelCaseField] || '';
+            }
+            
+            // Check if it's a direct field match
+            if (sampleData[fieldName] !== undefined) {
+              return sampleData[fieldName] || '';
+            }
+            
+            // Check if it's in custom fields
+            if (sampleData.custom_fields) {
+              try {
+                const customFields = JSON.parse(sampleData.custom_fields);
+                if (customFields[fieldName] !== undefined) {
+                  return customFields[fieldName] || '';
+                }
+              } catch (e) {
+                console.warn('Failed to parse custom fields for preview:', e);
+              }
+            }
+            
+            // Return the original placeholder if no match found
+            return match;
+          }) : element
       }))
     };
   }
