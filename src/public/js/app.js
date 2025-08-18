@@ -1055,156 +1055,19 @@ async function printCredential() {
         // Generate PDF for printing
         const pdfBlob = generatePdf(currentTemplate, pdfContactData);
         
-        // Get printer settings
-        const printerSettings = getPrinterSettings();
-        
-        // Open PDF in new window with automatic print attempt
+        // Simple print method - open PDF and print
         const pdfUrl = URL.createObjectURL(pdfBlob);
-        const printWindow = window.open('', '_blank', 'width=900,height=700,scrollbars=yes');
+        const printWindow = window.open(pdfUrl);
         
-        // Create a print-friendly page with the PDF embedded
-        printWindow.document.write(`
-            <!DOCTYPE html>
-            <html>
-            <head>
-                <title>Print Credential - ${printerSettings.name}</title>
-                <style>
-                    body { margin: 0; padding: 0; font-family: Arial, sans-serif; }
-                    .print-header { 
-                        position: fixed; 
-                        top: 0; 
-                        left: 0; 
-                        right: 0; 
-                        background: #007bff; 
-                        color: white; 
-                        padding: 15px; 
-                        text-align: center; 
-                        z-index: 1000;
-                        box-shadow: 0 2px 5px rgba(0,0,0,0.2);
-                    }
-                    .print-button { 
-                        background: #28a745; 
-                        color: white; 
-                        border: none; 
-                        padding: 12px 30px; 
-                        font-size: 18px; 
-                        border-radius: 5px; 
-                        cursor: pointer; 
-                        margin: 0 10px;
-                        font-weight: bold;
-                    }
-                    .print-button:hover { background: #218838; }
-                    .close-button { 
-                        background: #6c757d; 
-                        color: white; 
-                        border: none; 
-                        padding: 12px 30px; 
-                        font-size: 18px; 
-                        border-radius: 5px; 
-                        cursor: pointer; 
-                        margin: 0 10px;
-                    }
-                    .close-button:hover { background: #5a6268; }
-                    .printer-info {
-                        background: #fff3cd;
-                        color: #856404;
-                        padding: 10px;
-                        margin: 10px 0;
-                        border-radius: 5px;
-                        border: 1px solid #ffeaa7;
-                        font-size: 14px;
-                    }
-                    .pdf-container { 
-                        margin-top: ${printerSettings.showPrinterInfo ? '120px' : '80px'}; 
-                        text-align: center; 
-                        padding: 20px;
-                    }
-                    iframe { 
-                        border: 1px solid #ddd; 
-                        box-shadow: 0 2px 10px rgba(0,0,0,0.1);
-                        width: 100%;
-                        height: 600px;
-                    }
-                    @media print {
-                        .print-header { display: none; }
-                        .pdf-container { margin-top: 0; padding: 0; }
-                        iframe { 
-                            border: none; 
-                            box-shadow: none; 
-                            width: 100%; 
-                            height: 100vh;
-                        }
-                        body { 
-                            margin: 0; 
-                            padding: 0; 
-                            width: 4in; 
-                            height: 6in; 
-                        }
-                        @page {
-                            size: 4in 6in;
-                            margin: 0;
-                            padding: 0;
-                        }
-                    }
-                </style>
-            </head>
-            <body>
-                <div class="print-header">
-                    <h2 style="margin: 0 0 10px 0;">Printing to ${printerSettings.name} Printer</h2>
-                    ${printerSettings.showPrinterInfo ? `
-                    <div class="printer-info">
-                        <strong>Target Printer:</strong> ${printerSettings.name} | <strong>Label Size:</strong> ${printerSettings.labelSize} | <strong>DPI:</strong> ${printerSettings.dpi}
-                        <br><small><strong>Print Settings:</strong> Page Size: 4" x 6" | Margins: None | Scale: 100% | Headers/Footers: OFF</small>
-                    </div>
-                    ` : ''}
-                    <div>
-                        <button class="print-button" onclick="printToPrinter()">🖨️ PRINT TO ${printerSettings.name}</button>
-                        <button class="close-button" onclick="window.close()">Close Window</button>
-                    </div>
-                </div>
-                <div class="pdf-container">
-                    <iframe src="${pdfUrl}" width="100%" height="600px"></iframe>
-                </div>
-                <script>
-                    function printToPrinter() {
-                        // Show print instructions first
-                        const instructions = \`
-IMPORTANT PRINT SETTINGS:
-• Select "${printerSettings.name}" as your printer
-• Set page size to: 4" x 6" (${printerSettings.labelSize})
-• Set margins to: None/Minimal
-• Set scale to: 100% (Actual Size)
-• Disable headers and footers
-• Print background graphics: OFF
-
-To set ${printerSettings.name} as default:
-1. Go to Windows Settings > Devices > Printers
-2. Right-click ${printerSettings.name} > Set as default printer
-                        \`;
-                        
-                        if (confirm(instructions + '\\n\\nReady to print?')) {
-                            // Attempt to print
-                            window.print();
-                        }
-                    }
-                    
-                    // Auto-print after a short delay if enabled
-                    ${printerSettings.autoPrint ? `
-                    setTimeout(() => {
-                        if (confirm('Print credential to ${printerSettings.name} now?')) {
-                            printToPrinter();
-                        }
-                    }, 500);
-                    ` : ''}
-                </script>
-            </body>
-            </html>
-        `);
-        printWindow.document.close();
-        
-        // Clean up URL when window closes
-        printWindow.onbeforeunload = () => {
-            URL.revokeObjectURL(pdfUrl);
+        // Wait for PDF to load, then print
+        printWindow.onload = () => {
+            setTimeout(() => {
+                printWindow.print();
+                setTimeout(() => {
+                    URL.revokeObjectURL(pdfUrl);
+                    printWindow.close();
+                }, 1000);
+            }, 500);
         };
         
         // Mark as credentialed in the database
