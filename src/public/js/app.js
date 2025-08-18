@@ -1448,6 +1448,9 @@ async function loadTemplates() {
                                     Delete
                                 </button>
                             ` : ''}
+                            <button class="btn btn-sm btn-outline-info" onclick="exportTemplateById('${template.id}')" title="Export Template">
+                                <i class="fas fa-download"></i>
+                            </button>
                         </div>
                     </div>
                 `;
@@ -2514,6 +2517,22 @@ function setupToolButtons() {
         });
     }
     
+    // Load Template button
+    const loadTemplateBtn = document.getElementById('loadTemplateBtn');
+    if (loadTemplateBtn) {
+        loadTemplateBtn.addEventListener('click', () => {
+            importTemplate();
+        });
+    }
+    
+    // Export Template button
+    const exportTemplateBtn = document.getElementById('exportTemplateBtn');
+    if (exportTemplateBtn) {
+        exportTemplateBtn.addEventListener('click', () => {
+            exportTemplate();
+        });
+    }
+    
     // Preview button
     const previewBtn = document.getElementById('previewBtn');
     if (previewBtn) {
@@ -3551,5 +3570,158 @@ async function duplicateTemplate() {
     } catch (error) {
         console.error('Error duplicating template:', error);
         showError('Failed to duplicate template. Please try again.');
+    }
+}
+
+// Export template function
+async function exportTemplate() {
+    if (!currentDesignerTemplate) {
+        showError('No template to export. Please load a template first.');
+        return;
+    }
+    
+    try {
+        // Create export data
+        const exportData = {
+            ...currentDesignerTemplate,
+            exported_at: new Date().toISOString(),
+            version: '1.0'
+        };
+        
+        // Create blob and download
+        const blob = new Blob([JSON.stringify(exportData, null, 2)], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `${currentDesignerTemplate.name.replace(/[^a-zA-Z0-9]/g, '_')}_${new Date().toISOString().slice(0, 10)}.json`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+        
+        showSuccess(`Template "${currentDesignerTemplate.name}" exported successfully!`);
+    } catch (error) {
+        console.error('Error exporting template:', error);
+        showError('Failed to export template. Please try again.');
+    }
+}
+
+// Import template function
+async function importTemplate() {
+    // Create file input element
+    const fileInput = document.createElement('input');
+    fileInput.type = 'file';
+    fileInput.accept = '.json';
+    fileInput.style.display = 'none';
+    
+    fileInput.addEventListener('change', async (event) => {
+        const file = event.target.files[0];
+        if (!file) return;
+        
+        try {
+            const text = await file.text();
+            const templateData = JSON.parse(text);
+            
+            // Validate template data
+            if (!templateData.name || !templateData.config || !templateData.config.elements) {
+                showError('Invalid template file. Please select a valid template JSON file.');
+                return;
+            }
+            
+            // Check if template with same name already exists
+            const existingTemplates = await fetch('/api/templates').then(r => r.json());
+            const nameExists = existingTemplates.some(t => t.name === templateData.name);
+            
+            let finalName = templateData.name;
+            if (nameExists) {
+                const newName = prompt(
+                    `Template "${templateData.name}" already exists. Enter a new name:`,
+                    `${templateData.name} (Imported)`
+                );
+                if (!newName || newName.trim() === '') return;
+                finalName = newName.trim();
+            }
+            
+            // Prepare template for import
+            const importData = {
+                name: finalName,
+                description: templateData.description || `${templateData.name} (Imported)`,
+                config: templateData.config
+            };
+            
+            // Import the template
+            const response = await fetch('/api/templates/import', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({ templateData: importData })
+            });
+            
+            if (response.ok) {
+                const savedTemplate = await response.json();
+                showSuccess(`Template "${finalName}" imported successfully!`);
+                
+                // Load the imported template
+                currentDesignerTemplate = savedTemplate;
+                renderCanvas();
+                updateTemplateInfo();
+                
+                // Refresh templates list if visible
+                if (document.getElementById('templatesSection').style.display !== 'none') {
+                    await loadTemplates();
+                }
+            } else {
+                const error = await response.json();
+                showError(`Failed to import template: ${error.error}`);
+            }
+        } catch (error) {
+            console.error('Error importing template:', error);
+            showError('Failed to import template. Please check the file format.');
+        } finally {
+            // Clean up
+            document.body.removeChild(fileInput);
+        }
+    });
+    
+    // Trigger file selection
+    document.body.appendChild(fileInput);
+    fileInput.click();
+}
+
+// Export template by ID function (for templates list)
+async function exportTemplateById(templateId) {
+    try {
+        // Fetch the template data
+        const response = await fetch(`/api/templates/${templateId}`);
+        if (!response.ok) {
+            showError('Failed to fetch template data.');
+            return;
+        }
+        
+        const template = await response.json();
+        
+        // Create export data
+        const exportData = {
+            ...template,
+            exported_at: new Date().toISOString(),
+            version: '1.0'
+        };
+        
+        // Create blob and download
+        const blob = new Blob([JSON.stringify(exportData, null, 2)], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `${template.name.replace(/[^a-zA-Z0-9]/g, '_')}_${new Date().toISOString().slice(0, 10)}.json`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+        
+        showSuccess(`Template "${template.name}" exported successfully!`);
+    } catch (error) {
+        console.error('Error exporting template:', error);
+        showError('Failed to export template. Please try again.');
     }
 }
