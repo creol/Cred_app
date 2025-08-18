@@ -1122,10 +1122,29 @@ async function printCredential() {
                     iframe { 
                         border: 1px solid #ddd; 
                         box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+                        width: 100%;
+                        height: 600px;
                     }
                     @media print {
                         .print-header { display: none; }
-                        .pdf-container { margin-top: 0; }
+                        .pdf-container { margin-top: 0; padding: 0; }
+                        iframe { 
+                            border: none; 
+                            box-shadow: none; 
+                            width: 100%; 
+                            height: 100vh;
+                        }
+                        body { 
+                            margin: 0; 
+                            padding: 0; 
+                            width: 4in; 
+                            height: 6in; 
+                        }
+                        @page {
+                            size: 4in 6in;
+                            margin: 0;
+                            padding: 0;
+                        }
                     }
                 </style>
             </head>
@@ -1135,6 +1154,7 @@ async function printCredential() {
                     ${printerSettings.showPrinterInfo ? `
                     <div class="printer-info">
                         <strong>Target Printer:</strong> ${printerSettings.name} | <strong>Label Size:</strong> ${printerSettings.labelSize} | <strong>DPI:</strong> ${printerSettings.dpi}
+                        <br><small><strong>Print Settings:</strong> Page Size: 4" x 6" | Margins: None | Scale: 100% | Headers/Footers: OFF</small>
                     </div>
                     ` : ''}
                     <div>
@@ -1147,29 +1167,25 @@ async function printCredential() {
                 </div>
                 <script>
                     function printToPrinter() {
-                        // Try to print with specific printer settings
-                        const printOptions = {
-                            silent: false,
-                            printBackground: true,
-                            color: false,
-                            margin: {
-                                marginType: 'none'
-                            },
-                            landscape: false,
-                            pagesPerSheet: 1,
-                            collate: false,
-                            copies: 1,
-                            header: '',
-                            footer: ''
-                        };
+                        // Show print instructions first
+                        const instructions = \`
+IMPORTANT PRINT SETTINGS:
+• Select "${printerSettings.name}" as your printer
+• Set page size to: 4" x 6" (${printerSettings.labelSize})
+• Set margins to: None/Minimal
+• Set scale to: 100% (Actual Size)
+• Disable headers and footers
+• Print background graphics: OFF
+
+To set ${printerSettings.name} as default:
+1. Go to Windows Settings > Devices > Printers
+2. Right-click ${printerSettings.name} > Set as default printer
+                        \`;
                         
-                        // Attempt to print
-                        window.print();
-                        
-                        // Show printer selection reminder
-                        setTimeout(() => {
-                            alert('IMPORTANT: In the print dialog, please select "${printerSettings.name}" as your printer.\\n\\nTo set ${printerSettings.name} as default:\\n1. Go to Windows Settings > Devices > Printers\\n2. Right-click ${printerSettings.name} > Set as default printer');
-                        }, 100);
+                        if (confirm(instructions + '\\n\\nReady to print?')) {
+                            // Attempt to print
+                            window.print();
+                        }
                     }
                     
                     // Auto-print after a short delay if enabled
@@ -3254,9 +3270,23 @@ function generatePdf(template, contactData) {
         const isInBottomHalf = element.y >= 3;
         
         if (isInBottomHalf) {
-            // For bottom half elements, flip them upside down
-            // Mirror vertically around the center line (y = 3 inches = 216 points)
-            y = 432 - (element.y + element.height) * 72;
+            // For bottom half elements, we need to flip them for folding
+            // The bottom half should be upside down so when folded, it appears right-side up
+            
+            // Calculate the new position for the flipped element
+            // The element should be positioned so that when the label is folded at y=3 inches,
+            // the element appears in the correct orientation on the back side
+            
+            // Flip the element vertically around the fold line (y = 3 inches = 216 points)
+            const originalY = element.y * 72;
+            const elementHeight = element.height * 72;
+            const foldLine = 216; // 3 inches in points
+            
+            // Calculate new Y position: mirror around the fold line
+            y = foldLine + (foldLine - originalY - elementHeight);
+            
+            // Also flip the text rotation for proper orientation
+            // We'll handle this in the text rendering section
         }
         
         if (element.type === 'text') {
@@ -3352,19 +3382,60 @@ function generatePdf(template, contactData) {
             
             // Set text alignment
             let textX = x;
-            if (element.align === 'center') {
-                textX = x + (width / 2);
-                doc.text(content, textX, y + fontSize, { align: 'center' });
-            } else if (element.align === 'right') {
-                textX = x + width;
-                doc.text(content, textX, y + fontSize, { align: 'right' });
+            
+            // For bottom half elements, we need to rotate the text 180 degrees
+            if (isInBottomHalf) {
+                // Save the current graphics state
+                doc.saveGraphicsState();
+                
+                // Move to the center of the text element for rotation
+                const centerX = x + (width / 2);
+                const centerY = y + (height / 2);
+                
+                // Translate to the center, rotate 180 degrees, then translate back
+                doc.translate(centerX, centerY);
+                doc.rotate(180);
+                doc.translate(-centerX, -centerY);
+                
+                // Now render the text normally (it will be rotated)
+                if (element.align === 'center') {
+                    textX = x + (width / 2);
+                    doc.text(content, textX, y + fontSize, { align: 'center' });
+                } else if (element.align === 'right') {
+                    textX = x + width;
+                    doc.text(content, textX, y + fontSize, { align: 'right' });
+                } else {
+                    doc.text(content, textX, y + fontSize);
+                }
+                
+                // Restore the graphics state
+                doc.restoreGraphicsState();
             } else {
-                doc.text(content, textX, y + fontSize);
+                // Normal text rendering for top half
+                if (element.align === 'center') {
+                    textX = x + (width / 2);
+                    doc.text(content, textX, y + fontSize, { align: 'center' });
+                } else if (element.align === 'right') {
+                    textX = x + width;
+                    doc.text(content, textX, y + fontSize, { align: 'right' });
+                } else {
+                    doc.text(content, textX, y + fontSize);
+                }
             }
             
             // Reset font to normal
             doc.setFont('helvetica', 'normal');
         } else if (element.type === 'checkbox') {
+            // For bottom half elements, rotate the checkbox
+            if (isInBottomHalf) {
+                doc.saveGraphicsState();
+                const centerX = x + 10; // Center of checkbox
+                const centerY = y + 10;
+                doc.translate(centerX, centerY);
+                doc.rotate(180);
+                doc.translate(-centerX, -centerY);
+            }
+            
             // Draw checkbox
             doc.rect(x, y, 20, 20);
             if (element.checked) {
@@ -3376,6 +3447,10 @@ function generatePdf(template, contactData) {
             if (element.label) {
                 doc.setFontSize(12);
                 doc.text(element.label, x + 25, y + 15);
+            }
+            
+            if (isInBottomHalf) {
+                doc.restoreGraphicsState();
             }
             
         } else if (element.type === 'image' && element.imageData) {
@@ -3391,21 +3466,67 @@ function generatePdf(template, contactData) {
                     imageType = parts[0].split(':')[1].split(';')[0].split('/')[1].toUpperCase();
                 }
                 
+                // For bottom half elements, rotate the image
+                if (isInBottomHalf) {
+                    doc.saveGraphicsState();
+                    const centerX = x + (width / 2);
+                    const centerY = y + (height / 2);
+                    doc.translate(centerX, centerY);
+                    doc.rotate(180);
+                    doc.translate(-centerX, -centerY);
+                }
+                
                 // Add image to PDF
                 doc.addImage(imageData, imageType, x, y, width, height);
+                
+                if (isInBottomHalf) {
+                    doc.restoreGraphicsState();
+                }
             } catch (error) {
                 console.error('Failed to add image to PDF:', error);
                 // Fallback to placeholder
+                if (isInBottomHalf) {
+                    doc.saveGraphicsState();
+                    const centerX = x + (width / 2);
+                    const centerY = y + (height / 2);
+                    doc.translate(centerX, centerY);
+                    doc.rotate(180);
+                    doc.translate(-centerX, -centerY);
+                }
                 doc.rect(x, y, width, height);
                 doc.setFontSize(10);
                 doc.text('[Image Error]', x + (width / 2), y + (height / 2), { align: 'center' });
+                if (isInBottomHalf) {
+                    doc.restoreGraphicsState();
+                }
             }
         } else if (element.type === 'image') {
             // Fallback for images without data
+            if (isInBottomHalf) {
+                doc.saveGraphicsState();
+                const centerX = x + (width / 2);
+                const centerY = y + (height / 2);
+                doc.translate(centerX, centerY);
+                doc.rotate(180);
+                doc.translate(-centerX, -centerY);
+            }
             doc.rect(x, y, width, height);
             doc.setFontSize(10);
             doc.text('[No Image]', x + (width / 2), y + (height / 2), { align: 'center' });
+            if (isInBottomHalf) {
+                doc.restoreGraphicsState();
+            }
         } else if (element.type === 'line') {
+            // For bottom half elements, rotate the line
+            if (isInBottomHalf) {
+                doc.saveGraphicsState();
+                const centerX = x + (width / 2);
+                const centerY = y;
+                doc.translate(centerX, centerY);
+                doc.rotate(180);
+                doc.translate(-centerX, -centerY);
+            }
+            
             // Draw line
             const thickness = element.thickness || 2;
             const lineY = y + (thickness / 2);
@@ -3433,7 +3554,21 @@ function generatePdf(template, contactData) {
                 doc.line(x, lineY, x + width, lineY);
             }
             
+            if (isInBottomHalf) {
+                doc.restoreGraphicsState();
+            }
+            
         } else if (element.type === 'square') {
+            // For bottom half elements, rotate the square
+            if (isInBottomHalf) {
+                doc.saveGraphicsState();
+                const centerX = x + (width / 2);
+                const centerY = y + (height / 2);
+                doc.translate(centerX, centerY);
+                doc.rotate(180);
+                doc.translate(-centerX, -centerY);
+            }
+            
             // Draw square/rectangle
             if (element.fillColor && element.fillColor !== 'transparent') {
                 doc.setFillColor(element.fillColor);
@@ -3517,7 +3652,21 @@ function generatePdf(template, contactData) {
                 }
             }
             
+            if (isInBottomHalf) {
+                doc.restoreGraphicsState();
+            }
+            
         } else if (element.type === 'textArea') {
+            // For bottom half elements, rotate the text area
+            if (isInBottomHalf) {
+                doc.saveGraphicsState();
+                const centerX = x + (width / 2);
+                const centerY = y + (height / 2);
+                doc.translate(centerX, centerY);
+                doc.rotate(180);
+                doc.translate(-centerX, -centerY);
+            }
+            
             // Draw text area background
             if (element.backgroundColor && element.backgroundColor !== 'transparent') {
                 doc.setFillColor(element.backgroundColor);
@@ -3611,6 +3760,10 @@ function generatePdf(template, contactData) {
             
             // Reset font to normal
             doc.setFont('helvetica', 'normal');
+            
+            if (isInBottomHalf) {
+                doc.restoreGraphicsState();
+            }
         }
     });
     
