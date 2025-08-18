@@ -386,8 +386,50 @@ module.exports = function(database, config, logger) {
     return preview;
   }
 
-  // SumatraPDF print endpoint
-  router.post('/print-sumatra', upload.single('pdf'), async (req, res) => {
+     // Test SumatraPDF endpoint
+   router.get('/test-sumatra', async (req, res) => {
+     try {
+       console.log('Testing SumatraPDF installation...');
+       
+       // Check if SumatraPDF exists - try multiple possible paths
+       const possiblePaths = [
+         `C:\\Users\\User\\AppData\\Local\\SumatraPDF\\SumatraPDF.exe`,
+         `C:\\Users\\${process.env.USERNAME || 'User'}\\AppData\\Local\\SumatraPDF\\SumatraPDF.exe`,
+         `C:\\Program Files\\SumatraPDF\\SumatraPDF.exe`,
+         `C:\\Program Files (x86)\\SumatraPDF\\SumatraPDF.exe`
+       ];
+       
+       const results = [];
+       
+       for (const path of possiblePaths) {
+         try {
+           const exists = fs.existsSync(path);
+           results.push({ path, exists, error: null });
+           console.log(`Path ${path}: ${exists ? 'EXISTS' : 'NOT FOUND'}`);
+         } catch (e) {
+           results.push({ path, exists: false, error: e.message });
+           console.log(`Path ${path}: ERROR - ${e.message}`);
+         }
+       }
+       
+       res.json({ 
+         success: true, 
+         results,
+         username: process.env.USERNAME,
+         message: 'SumatraPDF path check completed'
+       });
+       
+     } catch (error) {
+       console.error('Test endpoint error:', error);
+       res.status(500).json({ 
+         success: false, 
+         error: `Test failed: ${error.message}` 
+       });
+     }
+   });
+
+   // SumatraPDF print endpoint
+   router.post('/print-sumatra', upload.single('pdf'), async (req, res) => {
     try {
       if (!req.file) {
         return res.status(400).json({ success: false, error: 'No PDF file provided' });
