@@ -45,12 +45,20 @@ A professional credentialing application for events with label printing, templat
    - Extract `SumatraPDF.exe` to this folder
    - **Important**: The app expects SumatraPDF at this exact path
 
-#### Step 4: Verify Installation
+#### Step 4: Enable Script Execution (if needed)
 1. **Open PowerShell as Administrator**:
    - Press `Windows + X`
    - Select "Windows PowerShell (Admin)" or "Terminal (Admin)"
 
-2. **Test Git**:
+2. **Enable script execution** (if you get "execution policy" errors):
+   ```powershell
+   Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser
+   ```
+   - Type "Y" when prompted
+   - This allows local scripts to run while maintaining security
+
+#### Step 5: Verify Installation
+1. **Test Git**:
    ```powershell
    git --version
    ```
@@ -70,7 +78,40 @@ A professional credentialing application for events with label printing, templat
 
 ### Application Installation
 
-#### Step 1: Clone the Repository
+#### Option 1: Automated Installation (Recommended)
+
+**Using PowerShell Script** (if execution policy allows):
+1. **Open PowerShell** (regular, not admin)
+2. **Navigate to desired location**:
+   ```powershell
+   cd C:\Users\[YourUsername]\Documents
+   ```
+3. **Download and run the PowerShell installer**:
+   ```powershell
+   # Download the installer
+   Invoke-WebRequest -Uri "https://raw.githubusercontent.com/creol/Cred_app/main/install-windows.ps1" -OutFile "install-windows.ps1"
+   
+   # Run the installer
+   .\install-windows.ps1
+   ```
+
+**Using Batch Script** (if PowerShell scripts are blocked):
+1. **Open Command Prompt** (regular, not admin)
+2. **Navigate to desired location**:
+   ```cmd
+   cd C:\Users\%USERNAME%\Documents
+   ```
+3. **Download and run the batch installer**:
+   ```cmd
+   # Download the installer
+   curl -o install-windows.bat https://raw.githubusercontent.com/creol/Cred_app/main/install-windows.bat
+   
+   # Run the installer
+   install-windows.bat
+   ```
+
+#### Option 2: Manual Installation
+
 1. **Open PowerShell** (regular, not admin)
 2. **Navigate to desired location**:
    ```powershell
@@ -83,20 +124,20 @@ A professional credentialing application for events with label printing, templat
    cd Cred_app
    ```
 
-#### Step 2: Install Dependencies
-```powershell
-npm install
-```
+4. **Install Dependencies**:
+   ```powershell
+   npm install
+   ```
 
-#### Step 3: Initialize the Application
-```powershell
-npm run install-app
-```
+5. **Initialize the Application**:
+   ```powershell
+   npm run install-app
+   ```
 
-#### Step 4: Start the Application
-```powershell
-npm start
-```
+6. **Start the Application**:
+   ```powershell
+   npm start
+   ```
 
 The app will be available at `http://localhost:3000`
 
@@ -136,6 +177,19 @@ The app will be available at `http://localhost:3000`
 **"Permission denied"**
 - Run PowerShell as Administrator
 - Or change the installation directory to a user-writable location
+
+**"Execution policy" errors**
+- Run PowerShell as Administrator
+- Execute: `Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser`
+- Type "Y" when prompted
+- This allows local scripts while maintaining security
+
+**"Scripts are disabled on this system"**
+- This is a Windows security feature
+- Run PowerShell as Administrator
+- Execute: `Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser`
+- Type "Y" when prompted
+- Restart PowerShell and try again
 
 #### Reset/Uninstall
 ```powershell
