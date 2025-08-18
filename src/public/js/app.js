@@ -1043,57 +1043,94 @@ async function printCredential() {
         // Generate PDF for printing
         const pdfBlob = generatePdf(currentTemplate, pdfContactData);
         
-        // Automatically trigger print dialog
+        // Open PDF in new window with print overlay
         const pdfUrl = URL.createObjectURL(pdfBlob);
-        const printWindow = window.open(pdfUrl, '_blank', 'width=800,height=600');
+        const printWindow = window.open('', '_blank', 'width=900,height=700,scrollbars=yes');
         
-        // Wait for the PDF to fully load before printing
-        printWindow.onload = () => {
-            // Add a longer delay to ensure PDF is fully rendered
-            setTimeout(() => {
-                try {
-                    // Try to trigger print using different methods
-                    if (printWindow.print) {
-                        printWindow.print();
-                    } else if (printWindow.document && printWindow.document.execCommand) {
-                        printWindow.document.execCommand('print');
-                    } else {
-                        // Fallback: show instructions to user
-                        printWindow.document.body.innerHTML = `
-                            <div style="padding: 20px; text-align: center;">
-                                <h3>Credential Ready for Printing</h3>
-                                <p>The credential PDF has been generated. Please use your browser's print function (Ctrl+P) to print it.</p>
-                                <button onclick="window.print()" style="padding: 10px 20px; font-size: 16px;">Print Now</button>
-                                <br><br>
-                                <button onclick="window.close()" style="padding: 10px 20px; font-size: 16px;">Close Window</button>
-                            </div>
-                        `;
+        // Create a print-friendly page with the PDF embedded
+        printWindow.document.write(`
+            <!DOCTYPE html>
+            <html>
+            <head>
+                <title>Print Credential</title>
+                <style>
+                    body { margin: 0; padding: 0; font-family: Arial, sans-serif; }
+                    .print-header { 
+                        position: fixed; 
+                        top: 0; 
+                        left: 0; 
+                        right: 0; 
+                        background: #007bff; 
+                        color: white; 
+                        padding: 15px; 
+                        text-align: center; 
+                        z-index: 1000;
+                        box-shadow: 0 2px 5px rgba(0,0,0,0.2);
                     }
-                    
-                    // Close the print window after a longer delay
+                    .print-button { 
+                        background: #28a745; 
+                        color: white; 
+                        border: none; 
+                        padding: 12px 30px; 
+                        font-size: 18px; 
+                        border-radius: 5px; 
+                        cursor: pointer; 
+                        margin: 0 10px;
+                        font-weight: bold;
+                    }
+                    .print-button:hover { background: #218838; }
+                    .close-button { 
+                        background: #6c757d; 
+                        color: white; 
+                        border: none; 
+                        padding: 12px 30px; 
+                        font-size: 18px; 
+                        border-radius: 5px; 
+                        cursor: pointer; 
+                        margin: 0 10px;
+                    }
+                    .close-button:hover { background: #5a6268; }
+                    .pdf-container { 
+                        margin-top: 80px; 
+                        text-align: center; 
+                        padding: 20px;
+                    }
+                    iframe { 
+                        border: 1px solid #ddd; 
+                        box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+                    }
+                    @media print {
+                        .print-header { display: none; }
+                        .pdf-container { margin-top: 0; }
+                    }
+                </style>
+            </head>
+            <body>
+                <div class="print-header">
+                    <h2 style="margin: 0 0 10px 0;">Credential Ready for Printing</h2>
+                    <div>
+                        <button class="print-button" onclick="window.print()">🖨️ PRINT NOW</button>
+                        <button class="close-button" onclick="window.close()">Close Window</button>
+                    </div>
+                </div>
+                <div class="pdf-container">
+                    <iframe src="${pdfUrl}" width="100%" height="600px"></iframe>
+                </div>
+                <script>
+                    // Auto-print after a short delay (optional)
                     setTimeout(() => {
-                        printWindow.close();
-                        URL.revokeObjectURL(pdfUrl);
-                    }, 5000);
-                } catch (error) {
-                    console.error('Print failed:', error);
-                    // If print fails, show manual print instructions
-                    printWindow.document.body.innerHTML = `
-                        <div style="padding: 20px; text-align: center;">
-                            <h3>Print Credential</h3>
-                            <p>Please use your browser's print function (Ctrl+P) to print the credential.</p>
-                            <button onclick="window.print()" style="padding: 10px 20px; font-size: 16px;">Print Now</button>
-                            <br><br>
-                            <button onclick="window.close()" style="padding: 10px 20px; font-size: 16px;">Close Window</button>
-                        </div>
-                    `;
-                }
-            }, 1000);
-        };
+                        if (confirm('Print credential now?')) {
+                            window.print();
+                        }
+                    }, 500);
+                </script>
+            </body>
+            </html>
+        `);
+        printWindow.document.close();
         
-        // Handle case where window fails to open
-        printWindow.onerror = () => {
-            showError('Failed to open print window. Please try again.');
+        // Clean up URL when window closes
+        printWindow.onbeforeunload = () => {
             URL.revokeObjectURL(pdfUrl);
         };
         
