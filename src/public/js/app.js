@@ -3385,31 +3385,24 @@ function generatePdf(template, contactData) {
             
             // For bottom half elements, we need to rotate the text 180 degrees
             if (isInBottomHalf) {
-                // Save the current graphics state
-                doc.saveGraphicsState();
-                
-                // Move to the center of the text element for rotation
+                // For jsPDF, we need to use a different approach for rotation
+                // We'll use the text rotation parameter instead of graphics state
                 const centerX = x + (width / 2);
                 const centerY = y + (height / 2);
                 
-                // Translate to the center, rotate 180 degrees, then translate back
-                doc.translate(centerX, centerY);
-                doc.rotate(180);
-                doc.translate(-centerX, -centerY);
+                // Calculate the angle for rotation (180 degrees)
+                const angle = 180;
                 
-                // Now render the text normally (it will be rotated)
+                // Render text with rotation
                 if (element.align === 'center') {
                     textX = x + (width / 2);
-                    doc.text(content, textX, y + fontSize, { align: 'center' });
+                    doc.text(content, textX, y + fontSize, { align: 'center', angle: angle });
                 } else if (element.align === 'right') {
                     textX = x + width;
-                    doc.text(content, textX, y + fontSize, { align: 'right' });
+                    doc.text(content, textX, y + fontSize, { align: 'right', angle: angle });
                 } else {
-                    doc.text(content, textX, y + fontSize);
+                    doc.text(content, textX, y + fontSize, { angle: angle });
                 }
-                
-                // Restore the graphics state
-                doc.restoreGraphicsState();
             } else {
                 // Normal text rendering for top half
                 if (element.align === 'center') {
@@ -3428,29 +3421,33 @@ function generatePdf(template, contactData) {
         } else if (element.type === 'checkbox') {
             // For bottom half elements, rotate the checkbox
             if (isInBottomHalf) {
-                doc.saveGraphicsState();
-                const centerX = x + 10; // Center of checkbox
-                const centerY = y + 10;
-                doc.translate(centerX, centerY);
-                doc.rotate(180);
-                doc.translate(-centerX, -centerY);
-            }
-            
-            // Draw checkbox
-            doc.rect(x, y, 20, 20);
-            if (element.checked) {
-                doc.line(x + 5, y + 10, x + 8, y + 15);
-                doc.line(x + 8, y + 15, x + 15, y + 5);
-            }
-            
-            // Add label
-            if (element.label) {
-                doc.setFontSize(12);
-                doc.text(element.label, x + 25, y + 15);
-            }
-            
-            if (isInBottomHalf) {
-                doc.restoreGraphicsState();
+                // For checkboxes in bottom half, we'll flip the checkmark pattern
+                // Draw checkbox normally but with flipped checkmark
+                doc.rect(x, y, 20, 20);
+                if (element.checked) {
+                    // Draw checkmark in flipped orientation
+                    doc.line(x + 15, y + 10, x + 12, y + 5);
+                    doc.line(x + 12, y + 5, x + 5, y + 15);
+                }
+                
+                // Add label with rotation
+                if (element.label) {
+                    doc.setFontSize(12);
+                    doc.text(element.label, x + 25, y + 15, { angle: 180 });
+                }
+            } else {
+                // Normal checkbox for top half
+                doc.rect(x, y, 20, 20);
+                if (element.checked) {
+                    doc.line(x + 5, y + 10, x + 8, y + 15);
+                    doc.line(x + 8, y + 15, x + 15, y + 5);
+                }
+                
+                // Add label
+                if (element.label) {
+                    doc.setFontSize(12);
+                    doc.text(element.label, x + 25, y + 15);
+                }
             }
             
         } else if (element.type === 'image' && element.imageData) {
@@ -3468,106 +3465,90 @@ function generatePdf(template, contactData) {
                 
                 // For bottom half elements, rotate the image
                 if (isInBottomHalf) {
-                    doc.saveGraphicsState();
-                    const centerX = x + (width / 2);
-                    const centerY = y + (height / 2);
-                    doc.translate(centerX, centerY);
-                    doc.rotate(180);
-                    doc.translate(-centerX, -centerY);
-                }
-                
-                // Add image to PDF
-                doc.addImage(imageData, imageType, x, y, width, height);
-                
-                if (isInBottomHalf) {
-                    doc.restoreGraphicsState();
+                    // For images in bottom half, we'll use the rotation parameter
+                    doc.addImage(imageData, imageType, x, y, width, height, undefined, 'FAST', 180);
+                } else {
+                    // Normal image for top half
+                    doc.addImage(imageData, imageType, x, y, width, height);
                 }
             } catch (error) {
                 console.error('Failed to add image to PDF:', error);
                 // Fallback to placeholder
-                if (isInBottomHalf) {
-                    doc.saveGraphicsState();
-                    const centerX = x + (width / 2);
-                    const centerY = y + (height / 2);
-                    doc.translate(centerX, centerY);
-                    doc.rotate(180);
-                    doc.translate(-centerX, -centerY);
-                }
                 doc.rect(x, y, width, height);
                 doc.setFontSize(10);
-                doc.text('[Image Error]', x + (width / 2), y + (height / 2), { align: 'center' });
                 if (isInBottomHalf) {
-                    doc.restoreGraphicsState();
+                    doc.text('[Image Error]', x + (width / 2), y + (height / 2), { align: 'center', angle: 180 });
+                } else {
+                    doc.text('[Image Error]', x + (width / 2), y + (height / 2), { align: 'center' });
                 }
             }
         } else if (element.type === 'image') {
             // Fallback for images without data
-            if (isInBottomHalf) {
-                doc.saveGraphicsState();
-                const centerX = x + (width / 2);
-                const centerY = y + (height / 2);
-                doc.translate(centerX, centerY);
-                doc.rotate(180);
-                doc.translate(-centerX, -centerY);
-            }
             doc.rect(x, y, width, height);
             doc.setFontSize(10);
-            doc.text('[No Image]', x + (width / 2), y + (height / 2), { align: 'center' });
             if (isInBottomHalf) {
-                doc.restoreGraphicsState();
+                doc.text('[No Image]', x + (width / 2), y + (height / 2), { align: 'center', angle: 180 });
+            } else {
+                doc.text('[No Image]', x + (width / 2), y + (height / 2), { align: 'center' });
             }
         } else if (element.type === 'line') {
-            // For bottom half elements, rotate the line
-            if (isInBottomHalf) {
-                doc.saveGraphicsState();
-                const centerX = x + (width / 2);
-                const centerY = y;
-                doc.translate(centerX, centerY);
-                doc.rotate(180);
-                doc.translate(-centerX, -centerY);
-            }
-            
-            // Draw line
+            // For bottom half elements, we'll draw the line in reverse
             const thickness = element.thickness || 2;
             const lineY = y + (thickness / 2);
             
-            if (element.style === 'dashed') {
-                // Draw dashed line
-                const dashLength = 10;
-                const gapLength = 5;
-                let currentX = x;
-                while (currentX < x + width) {
-                    const endX = Math.min(currentX + dashLength, x + width);
-                    doc.line(currentX, lineY, endX, lineY);
-                    currentX = endX + gapLength;
-                }
-            } else if (element.style === 'dotted') {
-                // Draw dotted line
-                const dotSpacing = 8;
-                let currentX = x;
-                while (currentX < x + width) {
-                    doc.circle(currentX, lineY, thickness / 2, 'F');
-                    currentX += dotSpacing;
+            if (isInBottomHalf) {
+                // For bottom half, draw line from right to left to simulate rotation
+                if (element.style === 'dashed') {
+                    // Draw dashed line in reverse
+                    const dashLength = 10;
+                    const gapLength = 5;
+                    let currentX = x + width;
+                    while (currentX > x) {
+                        const startX = Math.max(currentX - dashLength, x);
+                        doc.line(startX, lineY, currentX, lineY);
+                        currentX = startX - gapLength;
+                    }
+                } else if (element.style === 'dotted') {
+                    // Draw dotted line in reverse
+                    const dotSpacing = 8;
+                    let currentX = x + width;
+                    while (currentX > x) {
+                        doc.circle(currentX, lineY, thickness / 2, 'F');
+                        currentX -= dotSpacing;
+                    }
+                } else {
+                    // Draw solid line in reverse
+                    doc.line(x + width, lineY, x, lineY);
                 }
             } else {
-                // Draw solid line
-                doc.line(x, lineY, x + width, lineY);
-            }
-            
-            if (isInBottomHalf) {
-                doc.restoreGraphicsState();
+                // Normal line drawing for top half
+                if (element.style === 'dashed') {
+                    // Draw dashed line
+                    const dashLength = 10;
+                    const gapLength = 5;
+                    let currentX = x;
+                    while (currentX < x + width) {
+                        const endX = Math.min(currentX + dashLength, x + width);
+                        doc.line(currentX, lineY, endX, lineY);
+                        currentX = endX + gapLength;
+                    }
+                } else if (element.style === 'dotted') {
+                    // Draw dotted line
+                    const dotSpacing = 8;
+                    let currentX = x;
+                    while (currentX < x + width) {
+                        doc.circle(currentX, lineY, thickness / 2, 'F');
+                        currentX += dotSpacing;
+                    }
+                } else {
+                    // Draw solid line
+                    doc.line(x, lineY, x + width, lineY);
+                }
             }
             
         } else if (element.type === 'square') {
-            // For bottom half elements, rotate the square
-            if (isInBottomHalf) {
-                doc.saveGraphicsState();
-                const centerX = x + (width / 2);
-                const centerY = y + (height / 2);
-                doc.translate(centerX, centerY);
-                doc.rotate(180);
-                doc.translate(-centerX, -centerY);
-            }
+            // For bottom half elements, we'll handle the square normally
+            // (squares don't need rotation as they look the same from all angles)
             
             // Draw square/rectangle
             if (element.fillColor && element.fillColor !== 'transparent') {
@@ -3652,21 +3633,8 @@ function generatePdf(template, contactData) {
                 }
             }
             
-            if (isInBottomHalf) {
-                doc.restoreGraphicsState();
-            }
-            
         } else if (element.type === 'textArea') {
-            // For bottom half elements, rotate the text area
-            if (isInBottomHalf) {
-                doc.saveGraphicsState();
-                const centerX = x + (width / 2);
-                const centerY = y + (height / 2);
-                doc.translate(centerX, centerY);
-                doc.rotate(180);
-                doc.translate(-centerX, -centerY);
-            }
-            
+            // For bottom half elements, we'll handle text areas with rotation
             // Draw text area background
             if (element.backgroundColor && element.backgroundColor !== 'transparent') {
                 doc.setFillColor(element.backgroundColor);
@@ -3745,7 +3713,11 @@ function generatePdf(template, contactData) {
                 
                 if (testWidth > maxWidth && line !== '') {
                     // Draw current line and start new one
-                    doc.text(line.trim(), textX, currentY);
+                    if (isInBottomHalf) {
+                        doc.text(line.trim(), textX, currentY, { angle: 180 });
+                    } else {
+                        doc.text(line.trim(), textX, currentY);
+                    }
                     line = word + ' ';
                     currentY += fontSize + 2;
                 } else {
@@ -3755,15 +3727,15 @@ function generatePdf(template, contactData) {
             
             // Draw the last line
             if (line.trim()) {
-                doc.text(line.trim(), textX, currentY);
+                if (isInBottomHalf) {
+                    doc.text(line.trim(), textX, currentY, { angle: 180 });
+                } else {
+                    doc.text(line.trim(), textX, currentY);
+                }
             }
             
             // Reset font to normal
             doc.setFont('helvetica', 'normal');
-            
-            if (isInBottomHalf) {
-                doc.restoreGraphicsState();
-            }
         }
     });
     
