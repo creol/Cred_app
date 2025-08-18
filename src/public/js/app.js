@@ -107,6 +107,18 @@ function setupEventListeners() {
         showTemplateEditorBtn.addEventListener('click', showTemplateEditor);
     }
 
+    // Settings button
+    const showSettingsBtn = document.getElementById('showSettingsBtn');
+    if (showSettingsBtn) {
+        showSettingsBtn.addEventListener('click', showSettings);
+    }
+
+    // Save Settings button
+    const saveSettingsBtn = document.getElementById('saveSettingsBtn');
+    if (saveSettingsBtn) {
+        saveSettingsBtn.addEventListener('click', saveSettings);
+    }
+
     const showLabelDesignerBtn = document.getElementById('showLabelDesignerBtn');
     if (showLabelDesignerBtn) {
         showLabelDesignerBtn.addEventListener('click', showLabelDesigner);
@@ -2720,22 +2732,6 @@ function setupToolButtons() {
     if (exportTemplateBtn) {
         exportTemplateBtn.addEventListener('click', () => {
             exportTemplate();
-        });
-    }
-    
-    // Settings button
-    const showSettingsBtn = document.getElementById('showSettingsBtn');
-    if (showSettingsBtn) {
-        showSettingsBtn.addEventListener('click', () => {
-            showSettings();
-        });
-    }
-    
-    // Save Settings button
-    const saveSettingsBtn = document.getElementById('saveSettingsBtn');
-    if (saveSettingsBtn) {
-        saveSettingsBtn.addEventListener('click', () => {
-            saveSettings();
         });
     }
     
