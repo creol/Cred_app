@@ -396,15 +396,35 @@ module.exports = function(database, config, logger) {
              const printerName = req.body.printer || 'RX106HD';
        const pdfPath = req.file.path;
        
-       // Check if SumatraPDF exists
-       const sumatraPath = `"C:\\Users\\User\\AppData\\Local\\SumatraPDF\\SumatraPDF.exe"`;
-       const sumatraPathUnquoted = `C:\\Users\\User\\AppData\\Local\\SumatraPDF\\SumatraPDF.exe`;
+       // Check if SumatraPDF exists - try multiple possible paths
+       const possiblePaths = [
+         `C:\\Users\\User\\AppData\\Local\\SumatraPDF\\SumatraPDF.exe`,
+         `C:\\Users\\${process.env.USERNAME || 'User'}\\AppData\\Local\\SumatraPDF\\SumatraPDF.exe`,
+         `C:\\Program Files\\SumatraPDF\\SumatraPDF.exe`,
+         `C:\\Program Files (x86)\\SumatraPDF\\SumatraPDF.exe`
+       ];
        
-       if (!fs.existsSync(sumatraPathUnquoted)) {
-         console.error('SumatraPDF not found at:', sumatraPathUnquoted);
+       let sumatraPathUnquoted = null;
+       let sumatraPath = null;
+       
+       for (const path of possiblePaths) {
+         try {
+           if (fs.existsSync(path)) {
+             sumatraPathUnquoted = path;
+             sumatraPath = `"${path}"`;
+             console.log('SumatraPDF found at:', path);
+             break;
+           }
+         } catch (e) {
+           console.log('Could not check path:', path, e.message);
+         }
+       }
+       
+       if (!sumatraPathUnquoted) {
+         console.error('SumatraPDF not found in any of the expected locations');
          return res.status(500).json({ 
            success: false, 
-           error: `SumatraPDF not found at ${sumatraPathUnquoted}. Please check the installation path.` 
+           error: `SumatraPDF not found. Please install SumatraPDF in one of these locations: ${possiblePaths.join(', ')}` 
          });
        }
        
@@ -414,10 +434,14 @@ module.exports = function(database, config, logger) {
        // Try different command variations for better compatibility
        const sumatraCommand = `${sumatraPath} -print-to "${printerName}" -print-settings "fit" "${pdfPath}"`;
       
-             console.log('Executing SumatraPDF command:', sumatraCommand);
-       
-       // First attempt with specific printer
-       exec(sumatraCommand, (error, stdout, stderr) => {
+                    console.log('Executing SumatraPDF command:', sumatraCommand);
+       console.log('PDF path:', pdfPath);
+       console.log('Printer name:', printerName);
+        
+        // First attempt with specific printer
+        exec(sumatraCommand, (error, stdout, stderr) => {
+          console.log('Command stdout:', stdout);
+          console.log('Command stderr:', stderr);
          if (error) {
            console.error('SumatraPDF print error (first attempt):', error);
            console.log('Trying fallback command without specific printer...');
@@ -426,7 +450,9 @@ module.exports = function(database, config, logger) {
            const fallbackCommand = `${sumatraPath} -print "${pdfPath}"`;
            console.log('Executing fallback command:', fallbackCommand);
            
-           exec(fallbackCommand, (fallbackError, fallbackStdout, fallbackStderr) => {
+                       exec(fallbackCommand, (fallbackError, fallbackStdout, fallbackStderr) => {
+              console.log('Fallback command stdout:', fallbackStdout);
+              console.log('Fallback command stderr:', fallbackStderr);
              // Clean up the temporary file
              fs.unlink(pdfPath, (unlinkError) => {
                if (unlinkError) {
