@@ -1055,21 +1055,51 @@ async function printCredential() {
         // Generate PDF for printing
         const pdfBlob = generatePdf(currentTemplate, pdfContactData);
         
-        // Simple print method - open PDF and print
+        // Auto-print method for Brave and other browsers
         const pdfUrl = URL.createObjectURL(pdfBlob);
-        const printWindow = window.open(pdfUrl);
+        const printWindow = window.open(pdfUrl, '_blank', 'width=800,height=600');
         
-        // Wait for PDF to load, then print
-        printWindow.onload = () => {
-            setTimeout(() => {
+        // Multiple attempts to trigger print for Brave browser
+        let printAttempts = 0;
+        const maxAttempts = 5;
+        
+        const attemptPrint = () => {
+            printAttempts++;
+            console.log(`Print attempt ${printAttempts} of ${maxAttempts}`);
+            
+            try {
                 printWindow.print();
-                // Close window after printing
+                
+                // Close window after successful print
                 setTimeout(() => {
                     URL.revokeObjectURL(pdfUrl);
                     printWindow.close();
-                }, 1000);
-            }, 500);
+                }, 2000);
+                
+            } catch (error) {
+                console.log('Print failed, retrying...', error);
+                
+                if (printAttempts < maxAttempts) {
+                    setTimeout(attemptPrint, 1000);
+                } else {
+                    console.log('Max print attempts reached, keeping window open');
+                    // Keep window open if auto-print fails
+                    printWindow.onbeforeunload = () => {
+                        URL.revokeObjectURL(pdfUrl);
+                    };
+                }
+            }
         };
+        
+        // Try to print when window loads
+        printWindow.onload = () => {
+            setTimeout(attemptPrint, 500);
+        };
+        
+        // Also try printing immediately and after various delays
+        setTimeout(attemptPrint, 100);
+        setTimeout(attemptPrint, 1000);
+        setTimeout(attemptPrint, 2000);
         
         // Mark as credentialed in the database
         await markContactAsCredentialed();
