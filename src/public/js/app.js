@@ -1064,7 +1064,7 @@ async function printCredential() {
         printFormData.append('printer', 'RX106HD');
         
         try {
-            const response = await fetch('/api/print-sumatra', {
+                            const response = await fetch('/api/printing/print-sumatra', {
                 method: 'POST',
                 body: printFormData
             });
