@@ -2506,6 +2506,14 @@ function setupToolButtons() {
         });
     }
     
+    // Duplicate Template button
+    const duplicateTemplateBtn = document.getElementById('duplicateTemplateBtn');
+    if (duplicateTemplateBtn) {
+        duplicateTemplateBtn.addEventListener('click', () => {
+            duplicateTemplate();
+        });
+    }
+    
     // Preview button
     const previewBtn = document.getElementById('previewBtn');
     if (previewBtn) {
@@ -3491,3 +3499,57 @@ function debugAvailableFields() {
 
 // Add this to the global scope so it can be called from console
 window.debugAvailableFields = debugAvailableFields;
+
+// Duplicate template function
+async function duplicateTemplate() {
+    if (!currentDesignerTemplate) {
+        showError('No template to duplicate. Please load a template first.');
+        return;
+    }
+    
+    // Prompt for new template name
+    const newName = prompt('Enter a name for the duplicated template:', `${currentDesignerTemplate.name} (Copy)`);
+    
+    if (!newName || newName.trim() === '') {
+        return; // User cancelled or entered empty name
+    }
+    
+    try {
+        // Create duplicate template data
+        const duplicateData = {
+            name: newName.trim(),
+            description: `${currentDesignerTemplate.description || ''} (Copy)`,
+            config: { ...currentDesignerTemplate.config }
+        };
+        
+        // Save the duplicate template
+        const response = await fetch('/api/templates', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify(duplicateData)
+        });
+        
+        if (response.ok) {
+            const savedTemplate = await response.json();
+            showSuccess(`Template "${newName}" duplicated successfully!`);
+            
+            // Load the duplicated template
+            currentDesignerTemplate = savedTemplate;
+            renderCanvas();
+            updateTemplateInfo();
+            
+            // Refresh templates list if visible
+            if (document.getElementById('templatesSection').style.display !== 'none') {
+                await loadTemplates();
+            }
+        } else {
+            const error = await response.json();
+            showError(`Failed to duplicate template: ${error.error}`);
+        }
+    } catch (error) {
+        console.error('Error duplicating template:', error);
+        showError('Failed to duplicate template. Please try again.');
+    }
+}

@@ -157,6 +157,9 @@ class Database {
     
     // Create default template if none exists
     await this.createDefaultTemplate();
+    
+    // Create CCM No Vote template if none exists
+    await this.createCCMNoVoteTemplate();
   }
 
   // Run database migrations for existing databases
@@ -470,6 +473,137 @@ class Database {
       }
     } catch (error) {
       console.error('Failed to create default template:', error);
+    }
+  }
+
+  async createCCMNoVoteTemplate() {
+    try {
+      // Check if CCM No Vote template exists
+      const existingCCM = await this.get('SELECT * FROM templates WHERE id = ?', ['ccm-no-vote']);
+      
+      // Create or update CCM No Vote template
+      const ccmTemplate = {
+        id: 'ccm-no-vote',
+        name: 'CCM No Vote',
+        description: 'CCM credential template with no vote checkbox',
+        config: JSON.stringify({
+          width: 4,
+          height: 6,
+          foldOver: true,
+          elements: [
+            {
+              type: 'text',
+              id: 'title',
+              x: 0.5,
+              y: 0.3,
+              width: 3,
+              height: 0.6,
+              content: 'CCM Credential',
+              fontSize: 20,
+              bold: true,
+              align: 'center'
+            },
+            {
+              type: 'text',
+              id: 'name',
+              x: 0.5,
+              y: 1.0,
+              width: 3,
+              height: 0.8,
+              content: '{{firstName}} {{lastName}}',
+              fontSize: 24,
+              bold: true,
+              align: 'center'
+            },
+            {
+              type: 'text',
+              id: 'event',
+              x: 0.5,
+              y: 2.0,
+              width: 3,
+              height: 0.5,
+              content: '{{eventName}}',
+              fontSize: 16,
+              align: 'center'
+            },
+            {
+              type: 'text',
+              id: 'date',
+              x: 0.5,
+              y: 2.6,
+              width: 3,
+              height: 0.4,
+              content: '{{eventDate}}',
+              fontSize: 14,
+              align: 'center'
+            },
+            {
+              type: 'checkbox',
+              id: 'noVote',
+              x: 1.5,
+              y: 3.5,
+              width: 0.3,
+              height: 0.3,
+              label: 'No Vote'
+            },
+            {
+              type: 'text',
+              id: 'credentialed',
+              x: 0.5,
+              y: 4.2,
+              width: 3,
+              height: 0.4,
+              content: 'Credentialed',
+              fontSize: 12,
+              align: 'center',
+              color: '#28a745'
+            }
+          ]
+        }),
+        is_default: 0,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString()
+      };
+
+      if (existingCCM) {
+        // Update existing CCM template
+        const updateSql = `
+          UPDATE templates 
+          SET name = ?, description = ?, config = ?, updated_at = ?
+          WHERE id = ?
+        `;
+        
+        await this.run(updateSql, [
+          ccmTemplate.name,
+          ccmTemplate.description,
+          ccmTemplate.config,
+          ccmTemplate.updated_at,
+          ccmTemplate.id
+        ]);
+        
+        console.log('✅ Updated CCM No Vote template');
+      } else {
+        // Insert new CCM template
+        const insertSql = `
+          INSERT INTO templates (
+            id, name, description, config, is_default, created_at, updated_at
+          ) VALUES (?, ?, ?, ?, ?, ?, ?)
+        `;
+        
+        await this.run(insertSql, [
+          ccmTemplate.id,
+          ccmTemplate.name,
+          ccmTemplate.description,
+          ccmTemplate.config,
+          ccmTemplate.is_default,
+          ccmTemplate.created_at,
+          ccmTemplate.updated_at
+        ]);
+        
+        console.log('✅ Created CCM No Vote template');
+      }
+    } catch (error) {
+      console.error('Failed to create CCM No Vote template:', error);
     }
   }
 
