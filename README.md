@@ -12,50 +12,135 @@ A professional credentialing application for events with label printing, templat
 - **Statistics**: Real-time tracking of credentialing progress
 - **Export Management**: CSV exports with audit logging
 
-## Quick Start
+## Complete Windows Installation Guide
 
-### Prerequisites
-- Node.js 16.0.0 or higher
-- Windows PowerShell or macOS/Linux bash
-- Comer RX106HD thermal printer (for label printing)
+### Prerequisites Installation (Bare Windows Laptop)
 
-### Installation
+#### Step 1: Install Git
+1. **Download Git**: Go to https://git-scm.com/download/win
+2. **Run the installer**: Download and run `Git-2.x.x-64-bit.exe`
+3. **Installation options**:
+   - Click "Next" through all defaults
+   - Choose "Use Git from Git Bash and the Windows Command Prompt"
+   - Choose "Use bundled OpenSSH"
+   - Choose "Use the OpenSSL library"
+   - Choose "Checkout as-is, commit Unix-style line endings"
+   - Choose "Use Windows' default console window"
+   - Click "Install"
 
-#### Windows (PowerShell)
+#### Step 2: Install Node.js
+1. **Download Node.js**: Go to https://nodejs.org/
+2. **Download LTS version**: Click the "LTS" button (recommended)
+3. **Run the installer**: Download and run `node-v18.x.x-x64.msi`
+4. **Installation options**:
+   - Click "Next" through all defaults
+   - Ensure "Add to PATH" is checked
+   - Click "Install"
+
+#### Step 3: Install SumatraPDF (for printing)
+1. **Download SumatraPDF**: Go to https://www.sumatrapdfreader.org/download-free-pdf-viewer
+2. **Download portable version**: Click "Download SumatraPDF portable"
+3. **Extract to user directory**:
+   - Create folder: `C:\Users\[YourUsername]\AppData\Local\SumatraPDF\`
+   - Extract `SumatraPDF.exe` to this folder
+   - **Important**: The app expects SumatraPDF at this exact path
+
+#### Step 4: Verify Installation
+1. **Open PowerShell as Administrator**:
+   - Press `Windows + X`
+   - Select "Windows PowerShell (Admin)" or "Terminal (Admin)"
+
+2. **Test Git**:
+   ```powershell
+   git --version
+   ```
+   Should show: `git version 2.x.x.windows.x`
+
+3. **Test Node.js**:
+   ```powershell
+   node --version
+   ```
+   Should show: `v18.x.x` or higher
+
+4. **Test npm**:
+   ```powershell
+   npm --version
+   ```
+   Should show: `9.x.x` or higher
+
+### Application Installation
+
+#### Step 1: Clone the Repository
+1. **Open PowerShell** (regular, not admin)
+2. **Navigate to desired location**:
+   ```powershell
+   cd C:\Users\[YourUsername]\Documents
+   ```
+
+3. **Clone the repository**:
+   ```powershell
+   git clone https://github.com/creol/Cred_app.git
+   cd Cred_app
+   ```
+
+#### Step 2: Install Dependencies
 ```powershell
-# Clone and install
-git clone https://github.com/creol/Cred_app.git
-cd Cred_app
 npm install
-npm run install-app
-
-# Start the application
-npm start
 ```
 
-#### macOS/Linux (bash)
-```bash
-# Clone and install
-git clone https://github.com/creol/Cred_app.git
-cd Cred_app
-npm install
+#### Step 3: Initialize the Application
+```powershell
 npm run install-app
+```
 
-# Start the application
+#### Step 4: Start the Application
+```powershell
 npm start
 ```
 
 The app will be available at `http://localhost:3000`
 
-### Uninstall/Reset
+### Printer Setup
 
-#### Windows (PowerShell)
+#### Comer RX106HD Thermal Printer
+1. **Connect printer** via USB
+2. **Install printer drivers** (if not auto-detected)
+3. **Set as default printer** (optional, app will use it specifically)
+4. **Load 4"×6" fold-over labels**
+
+#### Alternative Printers
+- The app will automatically fall back to your default printer
+- Any printer that supports PDF printing will work
+- For best results, use a thermal label printer
+
+### Troubleshooting
+
+#### Common Issues
+
+**"npm is not recognized"**
+- Restart PowerShell after Node.js installation
+- Ensure Node.js was added to PATH during installation
+
+**"git is not recognized"**
+- Restart PowerShell after Git installation
+- Ensure Git was added to PATH during installation
+
+**"SumatraPDF not found"**
+- Verify SumatraPDF is at: `C:\Users\[YourUsername]\AppData\Local\SumatraPDF\SumatraPDF.exe`
+- Create the folder structure if it doesn't exist
+
+**"Port 3000 already in use"**
+- Close other applications using port 3000
+- Or change the port in `src/server.js` line 18
+
+**"Permission denied"**
+- Run PowerShell as Administrator
+- Or change the installation directory to a user-writable location
+
+#### Reset/Uninstall
 ```powershell
-npm run uninstall-app
-```
-
-#### macOS/Linux (bash)
-```bash
+# Stop the application (Ctrl+C in the terminal)
+# Then uninstall:
 npm run uninstall-app
 ```
 
@@ -101,10 +186,6 @@ CredentialsApp/
 └── cache/          # GitHub template cache
 ```
 
-## Printer Setup
-
-The app is configured for the **Comer RX106HD** thermal printer with **4"×6" fold-over** labels. The fold-over layout automatically renders one half upside-down so both sides read upright when folded.
-
 ## Performance
 
 - Handles 2,000-5,000 contacts smoothly
@@ -114,7 +195,7 @@ The app is configured for the **Comer RX106HD** thermal printer with **4"×6" fo
 
 ## Development
 
-```bash
+```powershell
 # Install dependencies
 npm install
 
@@ -131,6 +212,7 @@ For issues and questions:
 1. Check the in-app Help section
 2. Review the audit logs in the app directory
 3. Check the console output for error details
+4. Verify all prerequisites are installed correctly
 
 ## License
 
