@@ -396,30 +396,54 @@ module.exports = function(database, config, logger) {
       const printerName = req.body.printer || 'RX106HD';
       const pdfPath = req.file.path;
       
-             // SumatraPDF command to print directly to specified printer
-       const sumatraCommand = `"C:\\Users\\USer\\AppData\\Local\\SumatraPDF\\SumatraPDF.exe" -print-to "${printerName}" -print-settings "fit" "${pdfPath}"`;
+                    // SumatraPDF command to print directly to specified printer
+       // Try different command variations for better compatibility
+       const sumatraPath = `"C:\\Users\\USer\\AppData\\Local\\SumatraPDF\\SumatraPDF.exe"`;
+       const sumatraCommand = `${sumatraPath} -print-to "${printerName}" -print-settings "fit" "${pdfPath}"`;
       
-      console.log('Executing SumatraPDF command:', sumatraCommand);
-      
-      exec(sumatraCommand, (error, stdout, stderr) => {
-        // Clean up the temporary file
-        fs.unlink(pdfPath, (unlinkError) => {
-          if (unlinkError) {
-            console.error('Error deleting temp file:', unlinkError);
-          }
-        });
-        
-        if (error) {
-          console.error('SumatraPDF print error:', error);
-          return res.status(500).json({ 
-            success: false, 
-            error: `SumatraPDF print failed: ${error.message}` 
-          });
-        }
-        
-        console.log('SumatraPDF print successful');
-        res.json({ success: true, message: 'Print job sent successfully' });
-      });
+             console.log('Executing SumatraPDF command:', sumatraCommand);
+       
+       // First attempt with specific printer
+       exec(sumatraCommand, (error, stdout, stderr) => {
+         if (error) {
+           console.error('SumatraPDF print error (first attempt):', error);
+           console.log('Trying fallback command without specific printer...');
+           
+           // Fallback: try without specifying printer (will use default)
+           const fallbackCommand = `${sumatraPath} -print "${pdfPath}"`;
+           console.log('Executing fallback command:', fallbackCommand);
+           
+           exec(fallbackCommand, (fallbackError, fallbackStdout, fallbackStderr) => {
+             // Clean up the temporary file
+             fs.unlink(pdfPath, (unlinkError) => {
+               if (unlinkError) {
+                 console.error('Error deleting temp file:', unlinkError);
+               }
+             });
+             
+             if (fallbackError) {
+               console.error('SumatraPDF fallback print error:', fallbackError);
+               return res.status(500).json({ 
+                 success: false, 
+                 error: `SumatraPDF print failed: ${fallbackError.message}. Please check if SumatraPDF is installed at ${sumatraPath} and RX106HD printer is configured.` 
+               });
+             }
+             
+             console.log('SumatraPDF fallback print successful');
+             res.json({ success: true, message: 'Print job sent successfully (using default printer)' });
+           });
+         } else {
+           // Clean up the temporary file
+           fs.unlink(pdfPath, (unlinkError) => {
+             if (unlinkError) {
+               console.error('Error deleting temp file:', unlinkError);
+             }
+           });
+           
+           console.log('SumatraPDF print successful');
+           res.json({ success: true, message: 'Print job sent successfully' });
+         }
+       });
       
     } catch (error) {
       console.error('Print endpoint error:', error);
