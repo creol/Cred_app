@@ -63,12 +63,15 @@ class Config {
       version: '1.0.0',
       port: 3000,
       printer: {
-        type: 'Comer RX106HD',
+        type: 'RX106HD',
+        name: 'RX106HD',
         labelSize: '4x6',
         foldOver: true,
         width: 4,
         height: 6,
-        dpi: 203
+        dpi: 203,
+        autoPrint: true,
+        defaultPrinter: 'RX106HD'
       },
       paths: {
         appDir: this.getAppDir(),

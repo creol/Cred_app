@@ -1043,7 +1043,10 @@ async function printCredential() {
         // Generate PDF for printing
         const pdfBlob = generatePdf(currentTemplate, pdfContactData);
         
-        // Open PDF in new window with print overlay
+        // Get printer settings
+        const printerSettings = getPrinterSettings();
+        
+        // Open PDF in new window with automatic print attempt
         const pdfUrl = URL.createObjectURL(pdfBlob);
         const printWindow = window.open('', '_blank', 'width=900,height=700,scrollbars=yes');
         
@@ -1052,7 +1055,7 @@ async function printCredential() {
             <!DOCTYPE html>
             <html>
             <head>
-                <title>Print Credential</title>
+                <title>Print Credential - ${printerSettings.name}</title>
                 <style>
                     body { margin: 0; padding: 0; font-family: Arial, sans-serif; }
                     .print-header { 
@@ -1090,8 +1093,17 @@ async function printCredential() {
                         margin: 0 10px;
                     }
                     .close-button:hover { background: #5a6268; }
+                    .printer-info {
+                        background: #fff3cd;
+                        color: #856404;
+                        padding: 10px;
+                        margin: 10px 0;
+                        border-radius: 5px;
+                        border: 1px solid #ffeaa7;
+                        font-size: 14px;
+                    }
                     .pdf-container { 
-                        margin-top: 80px; 
+                        margin-top: ${printerSettings.showPrinterInfo ? '120px' : '80px'}; 
                         text-align: center; 
                         padding: 20px;
                     }
@@ -1107,9 +1119,14 @@ async function printCredential() {
             </head>
             <body>
                 <div class="print-header">
-                    <h2 style="margin: 0 0 10px 0;">Credential Ready for Printing</h2>
+                    <h2 style="margin: 0 0 10px 0;">Printing to ${printerSettings.name} Printer</h2>
+                    ${printerSettings.showPrinterInfo ? `
+                    <div class="printer-info">
+                        <strong>Target Printer:</strong> ${printerSettings.name} | <strong>Label Size:</strong> ${printerSettings.labelSize} | <strong>DPI:</strong> ${printerSettings.dpi}
+                    </div>
+                    ` : ''}
                     <div>
-                        <button class="print-button" onclick="window.print()">🖨️ PRINT NOW</button>
+                        <button class="print-button" onclick="printToPrinter()">🖨️ PRINT TO ${printerSettings.name}</button>
                         <button class="close-button" onclick="window.close()">Close Window</button>
                     </div>
                 </div>
@@ -1117,12 +1134,40 @@ async function printCredential() {
                     <iframe src="${pdfUrl}" width="100%" height="600px"></iframe>
                 </div>
                 <script>
-                    // Auto-print after a short delay (optional)
+                    function printToPrinter() {
+                        // Try to print with specific printer settings
+                        const printOptions = {
+                            silent: false,
+                            printBackground: true,
+                            color: false,
+                            margin: {
+                                marginType: 'none'
+                            },
+                            landscape: false,
+                            pagesPerSheet: 1,
+                            collate: false,
+                            copies: 1,
+                            header: '',
+                            footer: ''
+                        };
+                        
+                        // Attempt to print
+                        window.print();
+                        
+                        // Show printer selection reminder
+                        setTimeout(() => {
+                            alert('IMPORTANT: In the print dialog, please select "${printerSettings.name}" as your printer.\\n\\nTo set ${printerSettings.name} as default:\\n1. Go to Windows Settings > Devices > Printers\\n2. Right-click ${printerSettings.name} > Set as default printer');
+                        }, 100);
+                    }
+                    
+                    // Auto-print after a short delay if enabled
+                    ${printerSettings.autoPrint ? `
                     setTimeout(() => {
-                        if (confirm('Print credential now?')) {
-                            window.print();
+                        if (confirm('Print credential to ${printerSettings.name} now?')) {
+                            printToPrinter();
                         }
                     }, 500);
+                    ` : ''}
                 </script>
             </body>
             </html>
@@ -2678,6 +2723,22 @@ function setupToolButtons() {
         });
     }
     
+    // Settings button
+    const showSettingsBtn = document.getElementById('showSettingsBtn');
+    if (showSettingsBtn) {
+        showSettingsBtn.addEventListener('click', () => {
+            showSettings();
+        });
+    }
+    
+    // Save Settings button
+    const saveSettingsBtn = document.getElementById('saveSettingsBtn');
+    if (saveSettingsBtn) {
+        saveSettingsBtn.addEventListener('click', () => {
+            saveSettings();
+        });
+    }
+    
     // Preview button
     const previewBtn = document.getElementById('previewBtn');
     if (previewBtn) {
@@ -3659,6 +3720,77 @@ function debugAvailableFields() {
     }
     
     console.log('=== END DEBUG ===');
+}
+
+// Settings functions
+function showSettings() {
+    // Load current settings
+    loadSettings();
+    
+    // Show the settings modal
+    const modal = new bootstrap.Modal(document.getElementById('settingsModal'));
+    modal.show();
+}
+
+function loadSettings() {
+    // Load printer settings
+    document.getElementById('printerName').value = 'RX106HD';
+    document.getElementById('labelSize').value = '4x6';
+    document.getElementById('printerDpi').value = '203';
+    document.getElementById('foldOver').checked = true;
+    document.getElementById('autoPrint').checked = true;
+    document.getElementById('showPrinterInfo').checked = true;
+    
+    // Load app settings
+    document.getElementById('searchLimit').value = '50';
+    document.getElementById('searchDebounce').value = '250';
+    document.getElementById('enablePerformanceLogging').checked = false;
+    document.getElementById('enableDebugMode').checked = false;
+}
+
+function saveSettings() {
+    // Save printer settings
+    const printerSettings = {
+        name: document.getElementById('printerName').value,
+        labelSize: document.getElementById('labelSize').value,
+        dpi: parseInt(document.getElementById('printerDpi').value),
+        foldOver: document.getElementById('foldOver').checked,
+        autoPrint: document.getElementById('autoPrint').checked,
+        showPrinterInfo: document.getElementById('showPrinterInfo').checked
+    };
+    
+    // Save app settings
+    const appSettings = {
+        searchLimit: parseInt(document.getElementById('searchLimit').value),
+        searchDebounce: parseInt(document.getElementById('searchDebounce').value),
+        enablePerformanceLogging: document.getElementById('enablePerformanceLogging').checked,
+        enableDebugMode: document.getElementById('enableDebugMode').checked
+    };
+    
+    // Save to localStorage for now (in a real app, this would go to the backend)
+    localStorage.setItem('printerSettings', JSON.stringify(printerSettings));
+    localStorage.setItem('appSettings', JSON.stringify(appSettings));
+    
+    showSuccess('Settings saved successfully!');
+    
+    // Close the modal
+    const modal = bootstrap.Modal.getInstance(document.getElementById('settingsModal'));
+    modal.hide();
+}
+
+function getPrinterSettings() {
+    const saved = localStorage.getItem('printerSettings');
+    if (saved) {
+        return JSON.parse(saved);
+    }
+    return {
+        name: 'RX106HD',
+        labelSize: '4x6',
+        dpi: 203,
+        foldOver: true,
+        autoPrint: true,
+        showPrinterInfo: true
+    };
 }
 
 // Add this to the global scope so it can be called from console
