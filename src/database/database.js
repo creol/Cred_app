@@ -160,6 +160,9 @@ class Database {
     
     // Create CCM No Vote template if none exists
     await this.createCCMNoVoteTemplate();
+    
+    // Create CCM Vote Boxes template if none exists
+    await this.createCCMVoteBoxesTemplate();
   }
 
   // Run database migrations for existing databases
@@ -604,6 +607,146 @@ class Database {
       }
     } catch (error) {
       console.error('Failed to create CCM No Vote template:', error);
+    }
+  }
+
+  async createCCMVoteBoxesTemplate() {
+    try {
+      // Check if CCM Vote Boxes template exists
+      const existingCCMVote = await this.get('SELECT * FROM templates WHERE id = ?', ['ccm-vote-boxes']);
+      
+      // Create or update CCM Vote Boxes template
+      const ccmVoteTemplate = {
+        id: 'ccm-vote-boxes',
+        name: 'CCM Vote Boxes',
+        description: 'CCM credential template with presidential and delegate vote checkboxes',
+        config: JSON.stringify({
+          width: 4,
+          height: 6,
+          foldOver: true,
+          elements: [
+            {
+              type: 'text',
+              id: 'title',
+              x: 0.5,
+              y: 0.3,
+              width: 3,
+              height: 0.6,
+              content: 'CCM Credential',
+              fontSize: 20,
+              bold: true,
+              align: 'center'
+            },
+            {
+              type: 'text',
+              id: 'name',
+              x: 0.5,
+              y: 1.0,
+              width: 3,
+              height: 0.8,
+              content: '{{firstName}} {{lastName}}',
+              fontSize: 24,
+              bold: true,
+              align: 'center'
+            },
+            {
+              type: 'text',
+              id: 'event',
+              x: 0.5,
+              y: 2.0,
+              width: 3,
+              height: 0.5,
+              content: '{{eventName}}',
+              fontSize: 16,
+              align: 'center'
+            },
+            {
+              type: 'text',
+              id: 'date',
+              x: 0.5,
+              y: 2.6,
+              width: 3,
+              height: 0.4,
+              content: '{{eventDate}}',
+              fontSize: 14,
+              align: 'center'
+            },
+            {
+              type: 'checkbox',
+              id: 'presidentialVote',
+              x: 0.8,
+              y: 3.5,
+              width: 0.3,
+              height: 0.3,
+              label: 'Presidential Vote'
+            },
+            {
+              type: 'checkbox',
+              id: 'delegateVote',
+              x: 2.2,
+              y: 3.5,
+              width: 0.3,
+              height: 0.3,
+              label: 'Delegate Vote'
+            },
+            {
+              type: 'text',
+              id: 'credentialed',
+              x: 0.5,
+              y: 4.2,
+              width: 3,
+              height: 0.4,
+              content: 'Credentialed',
+              fontSize: 12,
+              align: 'center',
+              color: '#28a745'
+            }
+          ]
+        }),
+        is_default: 0,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString()
+      };
+
+      if (existingCCMVote) {
+        // Update existing CCM Vote Boxes template
+        const updateSql = `
+          UPDATE templates 
+          SET name = ?, description = ?, config = ?, updated_at = ?
+          WHERE id = ?
+        `;
+        
+        await this.run(updateSql, [
+          ccmVoteTemplate.name,
+          ccmVoteTemplate.description,
+          ccmVoteTemplate.config,
+          ccmVoteTemplate.updated_at,
+          ccmVoteTemplate.id
+        ]);
+        
+        console.log('✅ Updated CCM Vote Boxes template');
+      } else {
+        // Insert new CCM Vote Boxes template
+        const insertSql = `
+          INSERT INTO templates (
+            id, name, description, config, is_default, created_at, updated_at
+          ) VALUES (?, ?, ?, ?, ?, ?, ?)
+        `;
+        
+        await this.run(insertSql, [
+          ccmVoteTemplate.id,
+          ccmVoteTemplate.name,
+          ccmVoteTemplate.description,
+          ccmVoteTemplate.config,
+          ccmVoteTemplate.is_default,
+          ccmVoteTemplate.created_at,
+          ccmVoteTemplate.updated_at
+        ]);
+        
+        console.log('✅ Created CCM Vote Boxes template');
+      }
+    } catch (error) {
+      console.error('Failed to create CCM Vote Boxes template:', error);
     }
   }
 

@@ -205,6 +205,99 @@ try {
   fs.writeJsonSync(path.join(appDir, 'templates', 'ccm-no-vote.json'), ccmNoVoteTemplate, { spaces: 2 });
   console.log('✅ Created CCM No Vote template');
 
+  // Create CCM Vote Boxes template
+  const ccmVoteBoxesTemplate = {
+    id: 'ccm-vote-boxes',
+    name: 'CCM Vote Boxes',
+    description: 'CCM credential template with presidential and delegate vote checkboxes',
+    width: 4,
+    height: 6,
+    foldOver: true,
+    elements: [
+      {
+        type: 'text',
+        id: 'title',
+        x: 0.5,
+        y: 0.3,
+        width: 3,
+        height: 0.6,
+        content: 'CCM Credential',
+        fontSize: 20,
+        bold: true,
+        align: 'center'
+      },
+      {
+        type: 'text',
+        id: 'name',
+        x: 0.5,
+        y: 1.0,
+        width: 3,
+        height: 0.8,
+        content: '{{firstName}} {{lastName}}',
+        fontSize: 24,
+        bold: true,
+        align: 'center'
+      },
+      {
+        type: 'text',
+        id: 'event',
+        x: 0.5,
+        y: 2.0,
+        width: 3,
+        height: 0.5,
+        content: '{{eventName}}',
+        fontSize: 16,
+        align: 'center'
+      },
+      {
+        type: 'text',
+        id: 'date',
+        x: 0.5,
+        y: 2.6,
+        width: 3,
+        height: 0.4,
+        content: '{{eventDate}}',
+        fontSize: 14,
+        align: 'center'
+      },
+      {
+        type: 'checkbox',
+        id: 'presidentialVote',
+        x: 0.8,
+        y: 3.5,
+        width: 0.3,
+        height: 0.3,
+        label: 'Presidential Vote'
+      },
+      {
+        type: 'checkbox',
+        id: 'delegateVote',
+        x: 2.2,
+        y: 3.5,
+        width: 0.3,
+        height: 0.3,
+        label: 'Delegate Vote'
+      },
+      {
+        type: 'text',
+        id: 'credentialed',
+        x: 0.5,
+        y: 4.2,
+        width: 3,
+        height: 0.4,
+        content: 'Credentialed',
+        fontSize: 12,
+        align: 'center',
+        color: '#28a745'
+      }
+    ],
+    created: new Date().toISOString(),
+    updated: new Date().toISOString()
+  };
+
+  fs.writeJsonSync(path.join(appDir, 'templates', 'ccm-vote-boxes.json'), ccmVoteBoxesTemplate, { spaces: 2 });
+  console.log('✅ Created CCM Vote Boxes template');
+
   console.log('\n🎉 Installation complete!');
   console.log(`📁 App directory: ${appDir}`);
   console.log('\nNext steps:');
