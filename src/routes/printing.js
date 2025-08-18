@@ -1,5 +1,33 @@
 const express = require('express');
 const moment = require('moment');
+const multer = require('multer');
+const { exec } = require('child_process');
+const fs = require('fs');
+const path = require('path');
+
+// Configure multer for PDF upload
+const upload = multer({
+    storage: multer.diskStorage({
+        destination: (req, file, cb) => {
+            const tempDir = path.join(__dirname, '..', '..', 'temp');
+            if (!fs.existsSync(tempDir)) {
+                fs.mkdirSync(tempDir, { recursive: true });
+            }
+            cb(null, tempDir);
+        },
+        filename: (req, file, cb) => {
+            const timestamp = Date.now();
+            cb(null, `credential_${timestamp}.pdf`);
+        }
+    }),
+    fileFilter: (req, file, cb) => {
+        if (file.mimetype === 'application/pdf') {
+            cb(null, true);
+        } else {
+            cb(new Error('Only PDF files are allowed'), false);
+        }
+    }
+});
 
 module.exports = function(database, config, logger) {
   const router = express.Router();
@@ -256,6 +284,8 @@ module.exports = function(database, config, logger) {
     }
   });
 
+  
+
   // Simulate printing function
   async function simulatePrinting(templateConfig, labelData, isTest = false) {
     try {
@@ -355,6 +385,50 @@ module.exports = function(database, config, logger) {
 
     return preview;
   }
+
+  // SumatraPDF print endpoint
+  router.post('/print-sumatra', upload.single('pdf'), async (req, res) => {
+    try {
+      if (!req.file) {
+        return res.status(400).json({ success: false, error: 'No PDF file provided' });
+      }
+
+      const printerName = req.body.printer || 'RX106HD';
+      const pdfPath = req.file.path;
+      
+      // SumatraPDF command to print directly to specified printer
+      const sumatraCommand = `"C:\\Program Files\\SumatraPDF\\SumatraPDF.exe" -print-to "${printerName}" -print-settings "fit" "${pdfPath}"`;
+      
+      console.log('Executing SumatraPDF command:', sumatraCommand);
+      
+      exec(sumatraCommand, (error, stdout, stderr) => {
+        // Clean up the temporary file
+        fs.unlink(pdfPath, (unlinkError) => {
+          if (unlinkError) {
+            console.error('Error deleting temp file:', unlinkError);
+          }
+        });
+        
+        if (error) {
+          console.error('SumatraPDF print error:', error);
+          return res.status(500).json({ 
+            success: false, 
+            error: `SumatraPDF print failed: ${error.message}` 
+          });
+        }
+        
+        console.log('SumatraPDF print successful');
+        res.json({ success: true, message: 'Print job sent successfully' });
+      });
+      
+    } catch (error) {
+      console.error('Print endpoint error:', error);
+      res.status(500).json({ 
+        success: false, 
+        error: `Server error: ${error.message}` 
+      });
+    }
+  });
 
   return router;
 };

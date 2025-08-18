@@ -1055,51 +1055,39 @@ async function printCredential() {
         // Generate PDF for printing
         const pdfBlob = generatePdf(currentTemplate, pdfContactData);
         
-        // Auto-print method for Brave and other browsers
+        // SumatraPDF auto-print method
         const pdfUrl = URL.createObjectURL(pdfBlob);
-        const printWindow = window.open(pdfUrl, '_blank', 'width=800,height=600');
         
-        // Multiple attempts to trigger print for Brave browser
-        let printAttempts = 0;
-        const maxAttempts = 5;
+        // Send PDF to backend for SumatraPDF printing
+        const printFormData = new FormData();
+        printFormData.append('pdf', pdfBlob, 'credential.pdf');
+        printFormData.append('printer', 'RX106HD');
         
-        const attemptPrint = () => {
-            printAttempts++;
-            console.log(`Print attempt ${printAttempts} of ${maxAttempts}`);
+        try {
+            const response = await fetch('/api/print-sumatra', {
+                method: 'POST',
+                body: printFormData
+            });
             
-            try {
-                printWindow.print();
-                
-                // Close window after successful print
-                setTimeout(() => {
-                    URL.revokeObjectURL(pdfUrl);
-                    printWindow.close();
-                }, 2000);
-                
-            } catch (error) {
-                console.log('Print failed, retrying...', error);
-                
-                if (printAttempts < maxAttempts) {
-                    setTimeout(attemptPrint, 1000);
+            if (response.ok) {
+                const result = await response.json();
+                if (result.success) {
+                    console.log('SumatraPDF print successful');
+                    showSuccess('Credential printed successfully via SumatraPDF!');
                 } else {
-                    console.log('Max print attempts reached, keeping window open');
-                    // Keep window open if auto-print fails
-                    printWindow.onbeforeunload = () => {
-                        URL.revokeObjectURL(pdfUrl);
-                    };
+                    throw new Error(result.error || 'SumatraPDF print failed');
                 }
+            } else {
+                throw new Error('Failed to send PDF to backend');
             }
-        };
-        
-        // Try to print when window loads
-        printWindow.onload = () => {
-            setTimeout(attemptPrint, 500);
-        };
-        
-        // Also try printing immediately and after various delays
-        setTimeout(attemptPrint, 100);
-        setTimeout(attemptPrint, 1000);
-        setTimeout(attemptPrint, 2000);
+        } catch (error) {
+            console.error('SumatraPDF print error:', error);
+            // Fallback to browser print
+            const printWindow = window.open(pdfUrl);
+            printWindow.onload = () => {
+                setTimeout(() => printWindow.print(), 500);
+            };
+        }
         
         // Mark as credentialed in the database
         await markContactAsCredentialed();
