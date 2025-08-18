@@ -1043,11 +1043,23 @@ async function printCredential() {
         // Generate PDF for printing
         const pdfBlob = generatePdf(currentTemplate, pdfContactData);
         
-        // Show PDF preview modal for printing
-        showPdfPreviewForPrinting(pdfBlob, currentTemplate.name || 'Credential');
+        // Automatically trigger print dialog
+        const pdfUrl = URL.createObjectURL(pdfBlob);
+        const printWindow = window.open(pdfUrl);
+        printWindow.onload = () => {
+            printWindow.print();
+            // Close the print window after printing
+            setTimeout(() => {
+                printWindow.close();
+                URL.revokeObjectURL(pdfUrl);
+            }, 1000);
+        };
         
         // Mark as credentialed in the database
         await markContactAsCredentialed();
+        
+        // Show success message
+        showSuccess('Credential printed successfully!');
         
     } catch (error) {
         console.error('Printing failed:', error);
