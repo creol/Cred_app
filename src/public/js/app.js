@@ -1082,11 +1082,7 @@ async function printCredential() {
             }
         } catch (error) {
             console.error('SumatraPDF print error:', error);
-            // Fallback to browser print
-            const printWindow = window.open(pdfUrl);
-            printWindow.onload = () => {
-                setTimeout(() => printWindow.print(), 500);
-            };
+            showError('SumatraPDF printing failed. Please check if SumatraPDF is installed and RX106HD printer is configured.');
         }
         
         // Mark as credentialed in the database

@@ -396,8 +396,8 @@ module.exports = function(database, config, logger) {
       const printerName = req.body.printer || 'RX106HD';
       const pdfPath = req.file.path;
       
-      // SumatraPDF command to print directly to specified printer
-      const sumatraCommand = `"C:\\Program Files\\SumatraPDF\\SumatraPDF.exe" -print-to "${printerName}" -print-settings "fit" "${pdfPath}"`;
+             // SumatraPDF command to print directly to specified printer
+       const sumatraCommand = `"C:\\Users\\USer\\AppData\\Local\\SumatraPDF\\SumatraPDF.exe" -print-to "${printerName}" -print-settings "fit" "${pdfPath}"`;
       
       console.log('Executing SumatraPDF command:', sumatraCommand);
       
