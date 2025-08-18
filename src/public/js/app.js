@@ -1576,13 +1576,67 @@ function showManualAdd() {
 
 // Utility functions
 function showSuccess(message) {
-    // Simple success notification
-    alert(`Success: ${message}`);
+    // Create a non-blocking success notification
+    const toast = document.createElement('div');
+    toast.className = 'position-fixed top-0 end-0 p-3';
+    toast.style.zIndex = '9999';
+    toast.innerHTML = `
+        <div class="toast align-items-center text-white bg-success border-0" role="alert" aria-live="assertive" aria-atomic="true">
+            <div class="d-flex">
+                <div class="toast-body">
+                    <i class="fas fa-check-circle me-2"></i>${message}
+                </div>
+                <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast" aria-label="Close"></button>
+            </div>
+        </div>
+    `;
+    
+    document.body.appendChild(toast);
+    
+    // Initialize and show the toast
+    const toastElement = toast.querySelector('.toast');
+    const bsToast = new bootstrap.Toast(toastElement, {
+        autohide: true,
+        delay: 3000
+    });
+    bsToast.show();
+    
+    // Remove the toast element after it's hidden
+    toastElement.addEventListener('hidden.bs.toast', () => {
+        document.body.removeChild(toast);
+    });
 }
 
 function showError(message) {
-    // Simple error notification
-    alert(`Error: ${message}`);
+    // Create a non-blocking error notification
+    const toast = document.createElement('div');
+    toast.className = 'position-fixed top-0 end-0 p-3';
+    toast.style.zIndex = '9999';
+    toast.innerHTML = `
+        <div class="toast align-items-center text-white bg-danger border-0" role="alert" aria-live="assertive" aria-atomic="true">
+            <div class="d-flex">
+                <div class="toast-body">
+                    <i class="fas fa-exclamation-circle me-2"></i>${message}
+                </div>
+                <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast" aria-label="Close"></button>
+            </div>
+        </div>
+    `;
+    
+    document.body.appendChild(toast);
+    
+    // Initialize and show the toast
+    const toastElement = toast.querySelector('.toast');
+    const bsToast = new bootstrap.Toast(toastElement, {
+        autohide: true,
+        delay: 5000
+    });
+    bsToast.show();
+    
+    // Remove the toast element after it's hidden
+    toastElement.addEventListener('hidden.bs.toast', () => {
+        document.body.removeChild(toast);
+    });
 }
 
 // Template management functions
