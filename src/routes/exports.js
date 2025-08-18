@@ -23,6 +23,23 @@ module.exports = function(database, config, logger) {
 
       const startTime = Date.now();
 
+      // Get the original CSV headers for this event
+      const csvImport = await database.get(`
+        SELECT headers FROM csv_imports 
+        WHERE event_id = ? 
+        ORDER BY import_date DESC 
+        LIMIT 1
+      `, [eventId]);
+
+      let originalHeaders = [];
+      if (csvImport && csvImport.headers) {
+        try {
+          originalHeaders = JSON.parse(csvImport.headers);
+        } catch (e) {
+          logger.warn('Failed to parse CSV headers for export', { error: e.message, eventId });
+        }
+      }
+
       // Get credentialed contacts
       let sql = `
         SELECT c.*, cr.id as credential_id, cr.printed_at, cr.template_id, cr.status as credential_status
@@ -50,26 +67,40 @@ module.exports = function(database, config, logger) {
       
       const filePath = path.join(exportsDir, filename);
 
-      // Define CSV headers
-      const csvHeaders = [
+      // Build CSV headers: start with original CSV headers, then add credentialing info
+      const csvHeaders = [];
+      
+      // Add original CSV headers first
+      if (originalHeaders.length > 0) {
+        originalHeaders.forEach(header => {
+          csvHeaders.push({ id: header, title: header });
+        });
+      }
+      
+      // Add credentialing information columns
+      csvHeaders.push(
         { id: 'credential_id', title: 'Credential ID' },
-        { id: 'first_name', title: 'First Name' },
-        { id: 'last_name', title: 'Last Name' },
-        { id: 'middle_name', title: 'Middle Name' },
-        { id: 'birth_date', title: 'Birth Date' },
-        { id: 'address', title: 'Address' },
-        { id: 'city', title: 'City' },
-        { id: 'state', title: 'State' },
-        { id: 'zip', title: 'ZIP' },
-        { id: 'phone', title: 'Phone' },
-        { id: 'email', title: 'Email' },
         { id: 'printed_at', title: 'Credentialed Date' },
         { id: 'template_id', title: 'Template Used' },
-        { id: 'credential_status', title: 'Credential Status' },
-        { id: 'original_row', title: 'Original CSV Row' },
-        { id: 'created_at', title: 'Contact Created' },
-        { id: 'updated_at', title: 'Last Updated' }
-      ];
+        { id: 'credential_status', title: 'Credential Status' }
+      );
+
+      // Process contacts to flatten custom_fields and add credentialing data
+      const processedContacts = contacts.map(contact => {
+        const processed = { ...contact };
+        
+        // Parse custom_fields JSON and merge with main contact data
+        if (contact.custom_fields) {
+          try {
+            const customFields = JSON.parse(contact.custom_fields);
+            Object.assign(processed, customFields);
+          } catch (e) {
+            logger.warn('Failed to parse custom fields for export', { error: e.message, contactId: contact.id });
+          }
+        }
+        
+        return processed;
+      });
 
       // Create CSV writer
       const csvWriter = csv({
@@ -78,7 +109,7 @@ module.exports = function(database, config, logger) {
       });
 
       // Write CSV file
-      await csvWriter.writeRecords(contacts);
+      await csvWriter.writeRecords(processedContacts);
 
       // Record export in database
       const exportRecord = await database.recordExport({
@@ -150,6 +181,23 @@ module.exports = function(database, config, logger) {
 
       const startTime = Date.now();
 
+      // Get the original CSV headers for this event
+      const csvImport = await database.get(`
+        SELECT headers FROM csv_imports 
+        WHERE event_id = ? 
+        ORDER BY import_date DESC 
+        LIMIT 1
+      `, [eventId]);
+
+      let originalHeaders = [];
+      if (csvImport && csvImport.headers) {
+        try {
+          originalHeaders = JSON.parse(csvImport.headers);
+        } catch (e) {
+          logger.warn('Failed to parse CSV headers for export', { error: e.message, eventId });
+        }
+      }
+
       // Get all contacts with credentialing status
       const contacts = await database.all(`
         SELECT c.*, 
@@ -178,25 +226,39 @@ module.exports = function(database, config, logger) {
       
       const filePath = path.join(exportsDir, filename);
 
-      // Define CSV headers
-      const csvHeaders = [
-        { id: 'first_name', title: 'First Name' },
-        { id: 'last_name', title: 'Last Name' },
-        { id: 'middle_name', title: 'Middle Name' },
-        { id: 'birth_date', title: 'Birth Date' },
-        { id: 'address', title: 'Address' },
-        { id: 'city', title: 'City' },
-        { id: 'state', title: 'State' },
-        { id: 'zip', title: 'ZIP' },
-        { id: 'phone', title: 'Phone' },
-        { id: 'email', title: 'Email' },
+      // Build CSV headers: start with original CSV headers, then add credentialing info
+      const csvHeaders = [];
+      
+      // Add original CSV headers first
+      if (originalHeaders.length > 0) {
+        originalHeaders.forEach(header => {
+          csvHeaders.push({ id: header, title: header });
+        });
+      }
+      
+      // Add credentialing information columns
+      csvHeaders.push(
         { id: 'is_credentialed', title: 'Is Credentialed' },
         { id: 'credential_date', title: 'Credential Date' },
-        { id: 'template_used', title: 'Template Used' },
-        { id: 'original_row', title: 'Original CSV Row' },
-        { id: 'created_at', title: 'Contact Created' },
-        { id: 'updated_at', title: 'Last Updated' }
-      ];
+        { id: 'template_used', title: 'Template Used' }
+      );
+
+      // Process contacts to flatten custom_fields and add credentialing data
+      const processedContacts = contacts.map(contact => {
+        const processed = { ...contact };
+        
+        // Parse custom_fields JSON and merge with main contact data
+        if (contact.custom_fields) {
+          try {
+            const customFields = JSON.parse(contact.custom_fields);
+            Object.assign(processed, customFields);
+          } catch (e) {
+            logger.warn('Failed to parse custom fields for export', { error: e.message, contactId: contact.id });
+          }
+        }
+        
+        return processed;
+      });
 
       // Create CSV writer
       const csvWriter = csv({
@@ -205,7 +267,7 @@ module.exports = function(database, config, logger) {
       });
 
       // Write CSV file
-      await csvWriter.writeRecords(contacts);
+      await csvWriter.writeRecords(processedContacts);
 
       // Record export in database
       const exportRecord = await database.recordExport({
@@ -431,6 +493,23 @@ module.exports = function(database, config, logger) {
         await fs.ensureDir(exportsDir);
         const filePath = path.join(exportsDir, filename);
         
+        // Get the original CSV headers for this event
+        const csvImport = await database.get(`
+          SELECT headers FROM csv_imports 
+          WHERE event_id = ? 
+          ORDER BY import_date DESC 
+          LIMIT 1
+        `, [eventId]);
+
+        let originalHeaders = [];
+        if (csvImport && csvImport.headers) {
+          try {
+            originalHeaders = JSON.parse(csvImport.headers);
+          } catch (e) {
+            logger.warn('Failed to parse CSV headers for pre-reset export', { error: e.message, eventId });
+          }
+        }
+        
         // Export current credentialed contacts
         const credentialedContacts = await database.all(`
           SELECT c.*, cr.id as credential_id, cr.printed_at, cr.template_id
@@ -440,25 +519,46 @@ module.exports = function(database, config, logger) {
         `, [eventId]);
         
         if (credentialedContacts.length > 0) {
-          const csvHeaders = [
-            { id: 'first_name', title: 'First Name' },
-            { id: 'last_name', title: 'Last Name' },
-            { id: 'birth_date', title: 'Birth Date' },
-            { id: 'address', title: 'Address' },
-            { id: 'city', title: 'City' },
-            { id: 'state', title: 'State' },
-            { id: 'zip', title: 'ZIP' },
-            { id: 'phone', title: 'Phone' },
-            { id: 'email', title: 'Email' },
-            { id: 'credentialed_date', title: 'Credentialed Date' }
-          ];
+          // Build CSV headers: start with original CSV headers, then add credentialing info
+          const csvHeaders = [];
+          
+          // Add original CSV headers first
+          if (originalHeaders.length > 0) {
+            originalHeaders.forEach(header => {
+              csvHeaders.push({ id: header, title: header });
+            });
+          }
+          
+          // Add credentialing information columns
+          csvHeaders.push(
+            { id: 'credential_id', title: 'Credential ID' },
+            { id: 'printed_at', title: 'Credentialed Date' },
+            { id: 'template_id', title: 'Template Used' }
+          );
+          
+          // Process contacts to flatten custom_fields
+          const processedContacts = credentialedContacts.map(contact => {
+            const processed = { ...contact };
+            
+            // Parse custom_fields JSON and merge with main contact data
+            if (contact.custom_fields) {
+              try {
+                const customFields = JSON.parse(contact.custom_fields);
+                Object.assign(processed, customFields);
+              } catch (e) {
+                logger.warn('Failed to parse custom fields for pre-reset export', { error: e.message, contactId: contact.id });
+              }
+            }
+            
+            return processed;
+          });
           
           const csvWriter = csv({
             path: filePath,
             header: csvHeaders
           });
           
-          await csvWriter.writeRecords(credentialedContacts);
+          await csvWriter.writeRecords(processedContacts);
           
           // Record the pre-reset export
           await database.recordExport({
