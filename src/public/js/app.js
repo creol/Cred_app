@@ -1045,14 +1045,56 @@ async function printCredential() {
         
         // Automatically trigger print dialog
         const pdfUrl = URL.createObjectURL(pdfBlob);
-        const printWindow = window.open(pdfUrl);
+        const printWindow = window.open(pdfUrl, '_blank', 'width=800,height=600');
+        
+        // Wait for the PDF to fully load before printing
         printWindow.onload = () => {
-            printWindow.print();
-            // Close the print window after printing
+            // Add a longer delay to ensure PDF is fully rendered
             setTimeout(() => {
-                printWindow.close();
-                URL.revokeObjectURL(pdfUrl);
+                try {
+                    // Try to trigger print using different methods
+                    if (printWindow.print) {
+                        printWindow.print();
+                    } else if (printWindow.document && printWindow.document.execCommand) {
+                        printWindow.document.execCommand('print');
+                    } else {
+                        // Fallback: show instructions to user
+                        printWindow.document.body.innerHTML = `
+                            <div style="padding: 20px; text-align: center;">
+                                <h3>Credential Ready for Printing</h3>
+                                <p>The credential PDF has been generated. Please use your browser's print function (Ctrl+P) to print it.</p>
+                                <button onclick="window.print()" style="padding: 10px 20px; font-size: 16px;">Print Now</button>
+                                <br><br>
+                                <button onclick="window.close()" style="padding: 10px 20px; font-size: 16px;">Close Window</button>
+                            </div>
+                        `;
+                    }
+                    
+                    // Close the print window after a longer delay
+                    setTimeout(() => {
+                        printWindow.close();
+                        URL.revokeObjectURL(pdfUrl);
+                    }, 5000);
+                } catch (error) {
+                    console.error('Print failed:', error);
+                    // If print fails, show manual print instructions
+                    printWindow.document.body.innerHTML = `
+                        <div style="padding: 20px; text-align: center;">
+                            <h3>Print Credential</h3>
+                            <p>Please use your browser's print function (Ctrl+P) to print the credential.</p>
+                            <button onclick="window.print()" style="padding: 10px 20px; font-size: 16px;">Print Now</button>
+                            <br><br>
+                            <button onclick="window.close()" style="padding: 10px 20px; font-size: 16px;">Close Window</button>
+                        </div>
+                    `;
+                }
             }, 1000);
+        };
+        
+        // Handle case where window fails to open
+        printWindow.onerror = () => {
+            showError('Failed to open print window. Please try again.');
+            URL.revokeObjectURL(pdfUrl);
         };
         
         // Mark as credentialed in the database
