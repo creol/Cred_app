@@ -1063,11 +1063,12 @@ async function printCredential() {
         printWindow.onload = () => {
             setTimeout(() => {
                 printWindow.print();
-                setTimeout(() => {
-                    URL.revokeObjectURL(pdfUrl);
-                    printWindow.close();
-                }, 1000);
             }, 500);
+        };
+        
+        // Clean up URL when window closes (user closes it manually)
+        printWindow.onbeforeunload = () => {
+            URL.revokeObjectURL(pdfUrl);
         };
         
         // Mark as credentialed in the database
