@@ -393,12 +393,25 @@ module.exports = function(database, config, logger) {
         return res.status(400).json({ success: false, error: 'No PDF file provided' });
       }
 
-      const printerName = req.body.printer || 'RX106HD';
-      const pdfPath = req.file.path;
-      
-                    // SumatraPDF command to print directly to specified printer
+             const printerName = req.body.printer || 'RX106HD';
+       const pdfPath = req.file.path;
+       
+       // Check if SumatraPDF exists
+       const sumatraPath = `"C:\\Users\\User\\AppData\\Local\\SumatraPDF\\SumatraPDF.exe"`;
+       const sumatraPathUnquoted = `C:\\Users\\User\\AppData\\Local\\SumatraPDF\\SumatraPDF.exe`;
+       
+       if (!fs.existsSync(sumatraPathUnquoted)) {
+         console.error('SumatraPDF not found at:', sumatraPathUnquoted);
+         return res.status(500).json({ 
+           success: false, 
+           error: `SumatraPDF not found at ${sumatraPathUnquoted}. Please check the installation path.` 
+         });
+       }
+       
+       console.log('SumatraPDF found at:', sumatraPathUnquoted);
+       
+       // SumatraPDF command to print directly to specified printer
        // Try different command variations for better compatibility
-       const sumatraPath = `"C:\\Users\\USer\\AppData\\Local\\SumatraPDF\\SumatraPDF.exe"`;
        const sumatraCommand = `${sumatraPath} -print-to "${printerName}" -print-settings "fit" "${pdfPath}"`;
       
              console.log('Executing SumatraPDF command:', sumatraCommand);
