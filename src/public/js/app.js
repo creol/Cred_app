@@ -7,8 +7,19 @@ let selectedElement = null;
 let currentDesignerTemplate = null;
 let isFoldPreviewActive = false; // Track fold preview state
 
+// Make currentEvent available globally for other modules
+window.currentEvent = currentEvent;
+
+// Utility function to get current event (helpful for other modules)
+window.getCurrentEvent = function() {
+    return currentEvent;
+};
+
 // Initialize app
 document.addEventListener('DOMContentLoaded', async () => {
+    // Make loadTemplates available globally for other modules after functions are defined
+    window.loadTemplates = loadTemplates;
+    
     loadEvents(); // This will call loadEventTemplate() when an event is loaded
     // Don't call loadTemplates() here - it will be called after events are loaded
     setupEventListeners();
@@ -124,6 +135,27 @@ function setupEventListeners() {
         showLabelDesignerBtn.addEventListener('click', showLabelDesigner);
     }
 
+    // Modern Designer button
+    const showModernDesignerBtn = document.getElementById('showModernDesignerBtn');
+    if (showModernDesignerBtn) {
+        showModernDesignerBtn.addEventListener('click', showModernDesigner);
+    }
+
+    // Visual Designer button
+    const showVisualDesignerBtn = document.getElementById('showVisualDesignerBtn');
+    console.log('🎯 Visual Designer button found:', !!showVisualDesignerBtn);
+    if (showVisualDesignerBtn) {
+        showVisualDesignerBtn.addEventListener('click', () => {
+            console.log('🎯 Visual Designer button clicked!');
+            const modal = new bootstrap.Modal(document.getElementById('visualDesignerModal'));
+            
+            // The visual designer initialization is handled in visual-designer.js
+            // Just show the modal, the shown.bs.modal event will trigger initialization
+            
+            modal.show();
+        });
+    }
+
     // Import Template button
     const importTemplateBtn = document.getElementById('importTemplateBtn');
     if (importTemplateBtn) {
@@ -234,6 +266,7 @@ async function loadEvents() {
             if (activeEvent) {
                 // We have an active event
                 currentEvent = activeEvent;
+                window.currentEvent = currentEvent; // Update global reference
                 updateEventDisplay();
                 loadStatistics();
                 
@@ -261,6 +294,7 @@ async function loadEvents() {
                 // No active events - show the most recent ended event as current
                 const mostRecentEvent = events.sort((a, b) => new Date(b.date) - new Date(a.date))[0];
                 currentEvent = mostRecentEvent;
+                window.currentEvent = currentEvent; // Update global reference
                 updateEventDisplay();
                 // Don't load statistics for ended events - clear them instead
                 clearStats();
@@ -277,6 +311,7 @@ async function loadEvents() {
         } else {
             // No events - clear everything
             currentEvent = null;
+            window.currentEvent = currentEvent; // Update global reference
             currentTemplate = null;
             updateEventDisplay();
             clearSearch();
@@ -1035,8 +1070,8 @@ async function printCredential() {
         const formData = new FormData(document.getElementById('contactForm'));
         const contactData = Object.fromEntries(formData.entries());
         
-        // Create contact data object for PDF generation
-        const pdfContactData = {
+        // Create contact data object for merging
+        const mergedContactData = {
             firstName: contactData.firstName || currentContact.first_name || '',
             lastName: contactData.lastName || currentContact.last_name || '',
             middleName: contactData.middleName || currentContact.middle_name || '',
@@ -1055,17 +1090,42 @@ async function printCredential() {
         if (currentContact.custom_fields) {
             try {
                 const customFields = JSON.parse(currentContact.custom_fields);
-                Object.assign(pdfContactData, customFields);
+                Object.assign(mergedContactData, customFields);
                 console.log('Added custom fields to PDF data:', customFields);
             } catch (e) {
                 console.warn('Failed to parse custom fields for printing:', e);
             }
         }
         
-        console.log('Final PDF Contact Data:', pdfContactData);
+        console.log('Final PDF Contact Data:', mergedContactData);
         
-        // Generate PDF for printing
-        const pdfBlob = generatePdf(currentTemplate, pdfContactData);
+        let pdfBlob;
+        
+        // Check if using DOCX template
+        if (window.docxManager && window.docxManager.currentTemplate && currentTemplate.type === 'docx') {
+            // Use DOCX template system
+            pdfBlob = await window.docxManager.generatePdfForContact({
+                ...currentContact,
+                first_name: mergedContactData.firstName,
+                last_name: mergedContactData.lastName,
+                middle_name: mergedContactData.middleName,
+                birth_date: mergedContactData.birthDate,
+                address: mergedContactData.address,
+                city: mergedContactData.city,
+                state: mergedContactData.state,
+                zip: mergedContactData.zip,
+                phone: mergedContactData.phone,
+                email: mergedContactData.email
+            });
+        } else {
+            // Use traditional template system
+            pdfBlob = generatePdf(currentTemplate, mergedContactData);
+        }
+        
+        if (!pdfBlob) {
+            showError('Failed to generate PDF for printing');
+            return;
+        }
         
         // SumatraPDF auto-print method
         const pdfUrl = URL.createObjectURL(pdfBlob);
@@ -1302,6 +1362,7 @@ async function createEvent() {
         
         const event = await eventResponse.json();
         currentEvent = event;
+        window.currentEvent = currentEvent; // Update global reference
         
         // Import CSV if provided
         if (csvFile) {
@@ -1864,6 +1925,23 @@ function showLabelDesigner() {
     }, { once: true });
 }
 
+function showModernDesigner() {
+    // Show the modern designer modal
+    const modal = new bootstrap.Modal(document.getElementById('modernDesignerModal'));
+    modal.show();
+    
+    // Wait for modal to be shown before initializing
+    modal._element.addEventListener('shown.bs.modal', () => {
+        // Initialize modern designer if not already done
+        if (!window.modernDesigner) {
+            window.modernDesigner = new ModernLabelDesigner();
+        } else {
+            // Refresh available fields if designer already exists
+            window.modernDesigner.loadAvailableFields();
+        }
+    }, { once: true });
+}
+
 function ensureFoldLineVisible() {
     // Make sure the fold line and half labels are visible
     const foldLine = document.querySelector('.fold-line');
@@ -1883,6 +1961,7 @@ function loadDefaultTemplate() {
             width: 4,
             height: 6,
             foldOver: true,
+            backgroundPdf: null, // PDF background data (base64)
             elements: [
                 {
                     type: 'text',
@@ -1951,6 +2030,7 @@ function loadDefaultTemplate() {
     
     renderCanvas();
     updateTemplateInfo();
+    updatePdfBackgroundButtons();
 }
 
 
@@ -1959,19 +2039,43 @@ function renderCanvas(isFoldPreview = false) {
     const canvas = document.getElementById('labelCanvas');
     canvas.innerHTML = '';
     
+    // Add PDF background if present
+    if (currentDesignerTemplate && currentDesignerTemplate.config.backgroundPdf) {
+        const pdfBackground = document.createElement('div');
+        pdfBackground.className = 'pdf-background';
+        pdfBackground.style.cssText = `
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-image: url(${currentDesignerTemplate.config.backgroundPdf});
+            background-size: cover;
+            background-position: center;
+            background-repeat: no-repeat;
+            opacity: 0.8;
+            z-index: 1;
+            pointer-events: none;
+        `;
+        canvas.appendChild(pdfBackground);
+    }
+    
     // Always add the fold line and half labels first
     const foldLine = document.createElement('div');
     foldLine.className = 'fold-line';
+    foldLine.style.zIndex = '1000';
     foldLine.innerHTML = '<span style="position: absolute; right: 10px; top: -10px; background: #ff6b6b; color: white; padding: 2px 6px; border-radius: 3px; font-size: 10px; font-weight: bold;">FOLD</span>';
     canvas.appendChild(foldLine);
     
     const topHalf = document.createElement('div');
     topHalf.className = 'badge-half top-half';
+    topHalf.style.zIndex = '999';
     topHalf.innerHTML = '<div class="half-label">TOP HALF (4"x3")</div>';
     canvas.appendChild(topHalf);
     
     const bottomHalf = document.createElement('div');
     bottomHalf.className = 'badge-half bottom-half';
+    bottomHalf.style.zIndex = '999';
     bottomHalf.innerHTML = '<div class="half-label">BOTTOM HALF (4"x3") - PRINTS UPSIDE DOWN</div>';
     canvas.appendChild(bottomHalf);
     
@@ -2011,11 +2115,12 @@ function createCanvasElement(element, isFoldPreview = false) {
         display: flex;
         align-items: center;
         justify-content: center;
-        background: rgba(255, 255, 255, 0.9);
+        background: ${currentDesignerTemplate.config.backgroundPdf ? 'rgba(255, 255, 255, 0.7)' : 'rgba(255, 255, 255, 0.9)'};
         font-size: ${element.fontSize || 12}px;
         font-weight: ${element.bold ? 'bold' : 'normal'};
         text-align: ${element.align || 'left'};
         color: ${element.color || '#000000'};
+        z-index: 10;
     `;
     
     // Set content based on element type
@@ -2601,6 +2706,22 @@ function setupToolButtons() {
         });
     }
     
+    // Add PDF Background button
+    const addPdfBackgroundBtn = document.getElementById('addPdfBackgroundBtn');
+    if (addPdfBackgroundBtn) {
+        addPdfBackgroundBtn.addEventListener('click', () => {
+            addPdfBackground();
+        });
+    }
+    
+    // Remove PDF Background button
+    const removePdfBackgroundBtn = document.getElementById('removePdfBackgroundBtn');
+    if (removePdfBackgroundBtn) {
+        removePdfBackgroundBtn.addEventListener('click', () => {
+            removePdfBackground();
+        });
+    }
+    
     // Delete button
     deleteElementBtn = document.getElementById('deleteElementBtn');
     if (deleteElementBtn) {
@@ -2721,6 +2842,63 @@ function addSquareElement() {
     currentDesignerTemplate.config.elements.push(newElement);
     renderCanvas();
     selectElement(newElement);
+}
+
+function addPdfBackground() {
+    // Create a file input for PDF upload
+    const fileInput = document.createElement('input');
+    fileInput.type = 'file';
+    fileInput.accept = '.pdf,.png,.jpg,.jpeg';
+    fileInput.onchange = async (e) => {
+        const file = e.target.files[0];
+        if (!file) return;
+        
+        try {
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                const dataUrl = e.target.result;
+                
+                // Set the PDF background
+                currentDesignerTemplate.config.backgroundPdf = dataUrl;
+                
+                // Update UI
+                updatePdfBackgroundButtons();
+                renderCanvas();
+                
+                showSuccess(`${file.name} set as PDF background!`);
+            };
+            reader.readAsDataURL(file);
+        } catch (error) {
+            console.error('Error loading PDF background:', error);
+            showError('Failed to load PDF background. Please try again.');
+        }
+    };
+    
+    fileInput.click();
+}
+
+function removePdfBackground() {
+    if (currentDesignerTemplate && currentDesignerTemplate.config) {
+        currentDesignerTemplate.config.backgroundPdf = null;
+        updatePdfBackgroundButtons();
+        renderCanvas();
+        showSuccess('PDF background removed!');
+    }
+}
+
+function updatePdfBackgroundButtons() {
+    const addBtn = document.getElementById('addPdfBackgroundBtn');
+    const removeBtn = document.getElementById('removePdfBackgroundBtn');
+    
+    if (currentDesignerTemplate && currentDesignerTemplate.config.backgroundPdf) {
+        // PDF background exists
+        if (addBtn) addBtn.textContent = 'Change PDF Background';
+        if (removeBtn) removeBtn.style.display = 'block';
+    } else {
+        // No PDF background
+        if (addBtn) addBtn.innerHTML = '<i class="fas fa-file-pdf"></i> PDF Background';
+        if (removeBtn) removeBtn.style.display = 'none';
+    }
 }
 
 function addTextAreaElement() {
@@ -3145,6 +3323,16 @@ function generatePdf(template, contactData) {
     console.log('Template:', template);
     console.log('Contact Data:', contactData);
     console.log('Contact Data Keys:', Object.keys(contactData));
+    
+    // Add PDF background if present
+    if (template.config.backgroundPdf) {
+        try {
+            // Add the background image/PDF to cover the entire page
+            doc.addImage(template.config.backgroundPdf, 'JPEG', 0, 0, 288, 432);
+        } catch (error) {
+            console.warn('Failed to add PDF background to print document:', error);
+        }
+    }
     
     // Set default font
     doc.setFont('helvetica');

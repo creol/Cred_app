@@ -361,7 +361,13 @@
                             <i class="fas fa-plus"></i> New Template
                         </button>
                         <button class="btn btn-success" id="showLabelDesignerBtn">
-                            <i class="fas fa-palette"></i> Label Designer
+                            <i class="fas fa-palette"></i> Label Designer (Old)
+                        </button>
+                        <button class="btn btn-primary" id="showModernDesignerBtn">
+                            <i class="fas fa-magic"></i> Modern Designer
+                        </button>
+                        <button class="btn btn-info" id="showVisualDesignerBtn">
+                            <i class="fas fa-paint-brush"></i> Visual Designer
                         </button>
                         <button class="btn btn-outline-secondary" id="importTemplateBtn">
                             <i class="fas fa-upload"></i> Import
@@ -417,6 +423,14 @@
                                         <button class="btn btn-outline-primary btn-sm" id="addTextAreaBtn">
                                             <i class="fas fa-paragraph"></i> Add Text Area
                                         </button>
+                                        <hr>
+                                        <button class="btn btn-outline-success btn-sm" id="addPdfBackgroundBtn">
+                                            <i class="fas fa-file-pdf"></i> PDF Background
+                                        </button>
+                                        <button class="btn btn-outline-warning btn-sm" id="removePdfBackgroundBtn" style="display: none;">
+                                            <i class="fas fa-times"></i> Remove PDF Background
+                                        </button>
+                                        <hr>
                                         <button class="btn btn-outline-danger btn-sm" id="deleteElementBtn">
                                             <i class="fas fa-trash"></i> Delete
                                         </button>
@@ -517,6 +531,261 @@
                     <div id="pdfPreviewContainer" class="border rounded p-3" style="background: #f8f9fa; min-height: 400px;">
                         <div id="pdfPreviewContent" class="text-center">
                             <p class="text-muted">Generating PDF preview...</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modern Label Designer Modal -->
+    <div class="modal fade" id="modernDesignerModal" tabindex="-1">
+        <div class="modal-dialog modal-fullscreen">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">Modern Label Designer</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body p-0">
+                    <div class="row g-0 h-100">
+                        <!-- Left Sidebar - Tools -->
+                        <div class="col-md-3 bg-light p-3" style="height: 80vh; overflow-y: auto;">
+                            <!-- Background Section -->
+                            <div class="card mb-3">
+                                <div class="card-header">
+                                    <h6 class="mb-0"><i class="fas fa-image"></i> Background</h6>
+                                </div>
+                                <div class="card-body">
+                                    <div class="d-grid gap-2">
+                                        <input type="file" id="backgroundUpload" class="form-control" accept=".pdf,.png,.jpg,.jpeg">
+                                        <button class="btn btn-outline-danger btn-sm" id="removeBackground">
+                                            <i class="fas fa-times"></i> Remove Background
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Fields Section -->
+                            <div class="card mb-3">
+                                <div class="card-header">
+                                    <h6 class="mb-0"><i class="fas fa-plus-circle"></i> Add Fields</h6>
+                                </div>
+                                <div class="card-body">
+                                    <div class="mb-2">
+                                        <select class="form-control" id="fieldSelector">
+                                            <option value="">Select a field...</option>
+                                        </select>
+                                    </div>
+                                    <div class="d-grid gap-2">
+                                        <button class="btn btn-primary btn-sm" id="addFieldBtn">
+                                            <i class="fas fa-plus"></i> Add Selected Field
+                                        </button>
+                                        <button class="btn btn-outline-primary btn-sm" id="addTextField">
+                                            <i class="fas fa-font"></i> Add Custom Text
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Properties Panel -->
+                            <div class="card mb-3">
+                                <div class="card-header">
+                                    <h6 class="mb-0"><i class="fas fa-cog"></i> Properties</h6>
+                                </div>
+                                <div class="card-body" id="propertiesPanel">
+                                    <p class="text-muted">Select an object to edit its properties</p>
+                                </div>
+                            </div>
+
+                            <!-- Template Actions -->
+                            <div class="card">
+                                <div class="card-header">
+                                    <h6 class="mb-0"><i class="fas fa-save"></i> Template</h6>
+                                </div>
+                                <div class="card-body">
+                                    <div class="d-grid gap-2">
+                                        <button class="btn btn-success btn-sm" id="saveTemplate">
+                                            <i class="fas fa-save"></i> Save Template
+                                        </button>
+                                        <button class="btn btn-outline-secondary btn-sm" id="exportTemplate">
+                                            <i class="fas fa-download"></i> Export Template
+                                        </button>
+                                        <button class="btn btn-outline-info btn-sm" id="printPreview">
+                                            <i class="fas fa-eye"></i> Print Preview
+                                        </button>
+                                        <button class="btn btn-outline-warning btn-sm" id="testPrint">
+                                            <i class="fas fa-print"></i> Test Print
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Center - Canvas -->
+                        <div class="col-md-9 d-flex justify-content-center align-items-center bg-secondary p-3">
+                            <div class="position-relative">
+                                <canvas id="modernLabelCanvas" class="border border-dark shadow"></canvas>
+                                <div class="position-absolute top-0 start-0 bg-primary text-white px-2 py-1 small">
+                                    4" × 6" Label (Fold at center line)
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Visual Designer Modal -->
+    <div class="modal fade" id="visualDesignerModal" tabindex="-1">
+        <div class="modal-dialog modal-fullscreen">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">Visual Template Designer</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body p-0">
+                    <div class="container-fluid h-100">
+                        <div class="row h-100">
+                            <!-- Left Sidebar - Tools -->
+                            <div class="col-3 bg-light border-end p-3">
+                                <h6><i class="fas fa-image"></i> Background</h6>
+                                <div class="mb-3">
+                                    <input type="file" class="form-control form-control-sm" id="visualBackgroundUpload" accept=".pdf,.png,.jpg,.jpeg">
+                                    <small class="text-muted">Upload PDF, PNG, or JPG</small>
+                                </div>
+                                <button class="btn btn-sm btn-outline-danger w-100 mb-4" id="visualRemoveBackground">
+                                    <i class="fas fa-trash"></i> Remove Background
+                                </button>
+
+                                <h6><i class="fas fa-plus-circle"></i> Add Fields</h6>
+                                <div class="mb-3">
+                                    <select class="form-select form-select-sm" id="fieldTypeSelect">
+                                        <option value="">Choose field to add...</option>
+                                        <!-- Fields will be populated dynamically -->
+                                    </select>
+                                </div>
+                                <button class="btn btn-sm btn-primary w-100 mb-4" id="visualAddFieldBtn">
+                                    <i class="fas fa-plus"></i> Add Field
+                                </button>
+
+                                <h6><i class="fas fa-cog"></i> Field Properties</h6>
+                                <div id="fieldProperties" class="d-none">
+                                    <div class="mb-2">
+                                        <label class="form-label form-label-sm">Font Size</label>
+                                        <input type="range" class="form-range" id="fontSizeSlider" min="8" max="72" value="12">
+                                        <small id="fontSizeDisplay">12px</small>
+                                    </div>
+                                    <div class="mb-2">
+                                        <label class="form-label form-label-sm">Font Family</label>
+                                        <select class="form-select form-select-sm" id="fontFamilySelect">
+                                            <option value="Arial">Arial</option>
+                                            <option value="Times">Times</option>
+                                            <option value="Courier">Courier</option>
+                                            <option value="Calibri">Calibri</option>
+                                        </select>
+                                    </div>
+                                    <div class="mb-2">
+                                        <div class="form-check form-check-inline">
+                                            <input class="form-check-input" type="checkbox" id="boldCheck">
+                                            <label class="form-check-label" for="boldCheck"><strong>Bold</strong></label>
+                                        </div>
+                                    </div>
+                                    <div class="mb-2">
+                                        <label class="form-label form-label-sm">Text Alignment</label>
+                                                                            <div class="btn-group w-100" role="group">
+                                        <button type="button" class="btn btn-outline-secondary btn-sm active" id="alignLeftBtn" title="Align Left">
+                                            <i class="fas fa-align-left"></i>
+                                        </button>
+                                        <button type="button" class="btn btn-outline-secondary btn-sm" id="alignCenterBtn" title="Align Center">
+                                            <i class="fas fa-align-center"></i>
+                                        </button>
+                                        <button type="button" class="btn btn-outline-secondary btn-sm" id="alignRightBtn" title="Align Right">
+                                            <i class="fas fa-align-right"></i>
+                                        </button>
+                                    </div>
+                                    </div>
+                                    <div class="mb-2">
+                                        <button class="btn btn-sm btn-outline-secondary w-100" id="rotateFieldBtn">
+                                            <i class="fas fa-undo"></i> Rotate 180°
+                                        </button>
+                                    </div>
+                                    <div class="mb-2">
+                                        <button class="btn btn-sm btn-outline-danger w-100" id="deleteFieldBtn">
+                                            <i class="fas fa-trash"></i> Delete Field
+                                        </button>
+                                    </div>
+                                </div>
+
+                                <h6><i class="fas fa-tools"></i> Layout Tools</h6>
+                                <div class="mb-3">
+                                    <div class="form-check form-check-sm mb-2">
+                                        <input class="form-check-input" type="checkbox" id="snapToGridCheck" checked>
+                                        <label class="form-check-label" for="snapToGridCheck">Snap to Grid</label>
+                                    </div>
+                                    <div class="btn-group w-100 mb-2" role="group">
+                                        <button type="button" class="btn btn-outline-primary btn-sm" id="centerHorizontalBtn" title="Center Horizontally">
+                                            <i class="fas fa-arrows-alt-h"></i>
+                                        </button>
+                                        <button type="button" class="btn btn-outline-primary btn-sm" id="centerVerticalBtn" title="Center Vertically">
+                                            <i class="fas fa-arrows-alt-v"></i>
+                                        </button>
+                                        <button type="button" class="btn btn-outline-primary btn-sm" id="centerBothBtn" title="Center Both">
+                                            <i class="fas fa-crosshairs"></i>
+                                        </button>
+                                    </div>
+                                </div>
+
+                                <h6><i class="fas fa-layer-group"></i> Multi-Select Tools</h6>
+                                <div id="multiSelectTools" class="mb-3">
+                                    <div class="btn-group w-100 mb-2" role="group">
+                                        <button type="button" class="btn btn-outline-success btn-sm" id="alignLeftMultiBtn" title="Align Left">
+                                            <i class="fas fa-align-left"></i>
+                                        </button>
+                                        <button type="button" class="btn btn-outline-success btn-sm" id="alignCenterMultiBtn" title="Align Center">
+                                            <i class="fas fa-align-center"></i>
+                                        </button>
+                                        <button type="button" class="btn btn-outline-success btn-sm" id="alignRightMultiBtn" title="Align Right">
+                                            <i class="fas fa-align-right"></i>
+                                        </button>
+                                    </div>
+                                    <div class="btn-group w-100 mb-2" role="group">
+                                        <button type="button" class="btn btn-outline-success btn-sm" id="alignTopBtn" title="Align Top">
+                                            <i class="fas fa-align-justify" style="transform: rotate(90deg);"></i>
+                                        </button>
+                                        <button type="button" class="btn btn-outline-success btn-sm" id="alignMiddleBtn" title="Align Middle">
+                                            <i class="fas fa-minus"></i>
+                                        </button>
+                                        <button type="button" class="btn btn-outline-success btn-sm" id="alignBottomBtn" title="Align Bottom">
+                                            <i class="fas fa-align-justify" style="transform: rotate(90deg) scaleY(-1);"></i>
+                                        </button>
+                                    </div>
+                                    <button type="button" class="btn btn-outline-info btn-sm w-100" id="distributeHorizontalBtn">
+                                        <i class="fas fa-arrows-alt-h"></i> Distribute Horizontal
+                                    </button>
+                                </div>
+
+                                <h6 class="mt-4"><i class="fas fa-save"></i> Template Actions</h6>
+                                <div class="mb-2">
+                                    <input type="text" class="form-control form-control-sm" id="templateNameInput" placeholder="Template Name">
+                                </div>
+                                <button class="btn btn-sm btn-success w-100 mb-2" id="saveTemplateBtn">
+                                    <i class="fas fa-save"></i> Save Template
+                                </button>
+                                <button class="btn btn-sm btn-info w-100 mb-2" id="previewTemplateBtn">
+                                    <i class="fas fa-eye"></i> Preview
+                                </button>
+                                <button class="btn btn-sm btn-warning w-100" id="testPrintBtn">
+                                    <i class="fas fa-print"></i> Test Print
+                                </button>
+                            </div>
+
+                            <!-- Main Canvas Area -->
+                            <div class="col-9 p-0 position-relative">
+                                <div id="canvasContainer" class="w-100 h-100 d-flex align-items-center justify-content-center bg-white">
+                                    <canvas id="visualDesignerCanvas" width="576" height="864" style="border: 1px solid #ccc; max-height: 90vh; max-width: 90%;"></canvas>
+                                </div>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -729,7 +998,10 @@
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/fabric.js/5.3.0/fabric.min.js"></script>
     <script src="js/app.js"></script>
     <script src="js/canva-import.js"></script>
+    <script src="js/modern-label-designer.js"></script>
+    <script src="js/visual-designer.js"></script>
 
 </html>

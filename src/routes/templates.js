@@ -39,15 +39,28 @@ module.exports = function(database, config, logger) {
   // Create or update template
   router.post('/', async (req, res) => {
     try {
+      console.log('🔥 TEMPLATE SAVE REQUEST RECEIVED');
+      console.log('📋 Request body keys:', Object.keys(req.body));
+      console.log('📋 Request body:', JSON.stringify(req.body, null, 2));
+      
       const { id, name, description, config: templateConfig, is_default } = req.body;
       
+      console.log('📝 Template name:', name);
+      console.log('⚙️ Template config present:', !!templateConfig);
+      console.log('⚙️ Template config elements:', templateConfig?.elements?.length || 0);
+      
       if (!name || !templateConfig) {
+        console.error('❌ Missing required fields:', { name: !!name, templateConfig: !!templateConfig });
         return res.status(400).json({ error: 'Template name and configuration are required' });
       }
 
       // Validate template configuration
+      console.log('🔍 Validating template configuration...');
       const validationResult = validateTemplateConfig(templateConfig);
+      console.log('✅ Validation result:', validationResult);
+      
       if (!validationResult.isValid) {
+        console.error('❌ Template validation failed:', validationResult.errors);
         return res.status(400).json({ 
           error: 'Invalid template configuration', 
           details: validationResult.errors 
@@ -70,13 +83,16 @@ module.exports = function(database, config, logger) {
         is_default: is_default || false
       };
 
+      console.log('💾 Saving template to database...');
       const savedTemplate = await database.saveTemplate(templateData);
+      console.log('✅ Template saved to database:', savedTemplate.id);
       
       logger.logTemplateAction('template_saved', templateId, {
         name: savedTemplate.name,
         isDefault: savedTemplate.is_default
       });
 
+      console.log('🎉 Template save complete, sending response');
       res.json(savedTemplate);
     } catch (error) {
       logger.error('Failed to save template', { error: error.message });
@@ -585,6 +601,11 @@ module.exports = function(database, config, logger) {
         
         if (element.type === 'checkbox' && !element.label) {
           errors.push(`Checkbox element ${index} must have a label`);
+        }
+        
+        // Allow background-image type for Visual Designer templates
+        if (element.type === 'background-image') {
+          // Background images are valid, no additional validation needed
         }
         
         if (typeof element.x !== 'number' || typeof element.y !== 'number') {
