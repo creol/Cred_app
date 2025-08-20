@@ -113,7 +113,7 @@ async function startServer() {
 
     // Start server
     app.listen(PORT, () => {
-      logger.info(`🚀 Credentialing App server running on port ${PORT}`);
+      const packageJson = require('../package.json'); logger.info(`�� Credentialing App v${packageJson.version} server running on port ${PORT}`); console.log(`\n🎉 CREDENTIALING APP v${packageJson.version} STARTED\n🔗 http://localhost:${PORT}\n`);
       logger.info(`📁 App directory: ${config.getAppDir()}`);
       logger.info(`🌐 Open http://localhost:${PORT} in your browser`);
     });

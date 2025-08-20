@@ -369,13 +369,14 @@ module.exports = function(database, config, logger, upload) {
           error: e.message, 
           eventId: req.params.eventId 
         });
+        // If parsing fails, try to split as comma-separated values
+        if (typeof csvImport.headers === 'string') {
+          headers = csvImport.headers.split(',').map(h => h.trim());
+        }
       }
 
-      res.json({
-        headers: headers,
-        originalFilename: csvImport.original_filename,
-        importDate: csvImport.import_date
-      });
+      // Return just the headers array, not the metadata object
+      res.json(headers);
     } catch (error) {
       logger.error('Failed to get CSV headers', { 
         error: error.message, 
