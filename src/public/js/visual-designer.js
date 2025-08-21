@@ -26,6 +26,10 @@ class VisualDesigner {
         this.currentPreviewIndex = 0;
         this.isPreviewMode = false;
         
+        // PDF positioning offsets (in pixels)
+        this.pdfOffsetX = 0;
+        this.pdfOffsetY = 0;
+        
         console.log('🎯 VisualDesigner calling init()');
         this.init();
     }
@@ -85,12 +89,15 @@ class VisualDesigner {
                 console.log('📝 Set template name:', template.name);
             }
             
-            // Parse template config
-            const config = template.config;
-            if (!config) {
-                console.warn('⚠️ Template has no config to load');
-                return;
-            }
+                    // Parse template config
+        const config = template.config;
+        if (!config) {
+            console.warn('⚠️ Template has no config to load');
+            return;
+        }
+        
+        // STANDARDIZED: Always use 576x864 - ignore stored dimensions
+        console.log(`📏 STANDARDIZED: Using fixed 576x864 canvas (ignoring stored ${config.width || 'unknown'}x${config.height || 'unknown'})`);
             
             // Handle different template formats
             let elements = [];
@@ -161,13 +168,24 @@ class VisualDesigner {
                 const key = `${x}-${y}-${content}`;
                 
                 if (!uniqueFields.has(key)) {
+                    // MIGRATE coordinates from old 400x600 templates to 576x864
+                    let migrationX = x;
+                    let migrationY = y;
+                    
+                    // If this looks like an old 400x600 template, scale up coordinates
+                    if (config.width === 400 && config.height === 600) {
+                        migrationX = x * (576 / 400);  // Scale X: 400 -> 576
+                        migrationY = y * (864 / 600);  // Scale Y: 600 -> 864
+                        console.log(`🔄 MIGRATING: (${x}, ${y}) -> (${migrationX.toFixed(1)}, ${migrationY.toFixed(1)})`);
+                    }
+                    
                     const field = {
                         id: Date.now() + index,
                         type: element.fieldType || this.extractFieldType(content),  // Use stored fieldType if available
                         content: content,
                         label: content,
-                        x: x,
-                        y: y,
+                        x: migrationX,
+                        y: migrationY,
                         width: element.width || 100,
                         height: element.height || 20,
                         fontSize: element.fontSize || element.font_size || 12,
@@ -188,6 +206,19 @@ class VisualDesigner {
             this.fields = Array.from(uniqueFields.values());
             console.log('✅ Loaded', this.fields.length, 'unique fields');
             console.log('✅ Fields stored in this.fields:', this.fields.map(f => ({ id: f.id, content: f.content, x: f.x, y: f.y })));
+            
+            // Load PDF offsets if present
+            if (config.pdfOffsetX !== undefined || config.pdfOffsetY !== undefined) {
+                this.pdfOffsetX = config.pdfOffsetX || 0;
+                this.pdfOffsetY = config.pdfOffsetY || 0;
+                console.log('🎯 Loaded PDF offsets:', this.pdfOffsetX, this.pdfOffsetY);
+                
+                // Update the input fields
+                const pdfOffsetXInput = document.getElementById('pdfOffsetX');
+                const pdfOffsetYInput = document.getElementById('pdfOffsetY');
+                if (pdfOffsetXInput) pdfOffsetXInput.value = this.pdfOffsetX;
+                if (pdfOffsetYInput) pdfOffsetYInput.value = this.pdfOffsetY;
+            }
             
             // Redraw canvas with loaded content
             this.draw();
@@ -442,6 +473,33 @@ class VisualDesigner {
             });
         } else {
             console.warn('🖨️ visualTestPrintBtn element not found!');
+        }
+        
+        // PDF Offset Controls
+        const applyOffsetBtn = document.getElementById('applyOffsetBtn');
+        if (applyOffsetBtn) {
+            applyOffsetBtn.addEventListener('click', () => {
+                this.applyOffset();
+            });
+        }
+        
+        const resetOffsetBtn = document.getElementById('resetOffsetBtn');
+        if (resetOffsetBtn) {
+            resetOffsetBtn.addEventListener('click', () => {
+                this.resetOffset();
+            });
+        }
+        
+        // Update offsets when inputs change
+        const pdfOffsetX = document.getElementById('pdfOffsetX');
+        const pdfOffsetY = document.getElementById('pdfOffsetY');
+        if (pdfOffsetX && pdfOffsetY) {
+            pdfOffsetX.addEventListener('input', () => {
+                this.pdfOffsetX = parseInt(pdfOffsetX.value) || 0;
+            });
+            pdfOffsetY.addEventListener('input', () => {
+                this.pdfOffsetY = parseInt(pdfOffsetY.value) || 0;
+            });
         }
 
         // Text alignment controls
@@ -1021,9 +1079,17 @@ class VisualDesigner {
     
     getMousePos(event) {
         const rect = this.canvas.getBoundingClientRect();
+        
+        // Account for CSS scaling - canvas is 576x864 but may be displayed smaller
+        const scaleX = this.canvas.width / rect.width;
+        const scaleY = this.canvas.height / rect.height;
+        
+        const rawX = event.clientX - rect.left;
+        const rawY = event.clientY - rect.top;
+        
         return {
-            x: event.clientX - rect.left,
-            y: event.clientY - rect.top
+            x: rawX * scaleX,
+            y: rawY * scaleY
         };
     }
     
@@ -1583,10 +1649,12 @@ class VisualDesigner {
             
             // Convert Visual Designer format to the standard template format
             const templateConfig = {
-                width: this.canvas.width,
-                height: this.canvas.height,
+                width: 576,  // STANDARDIZED: Always 576x864
+                height: 864,
                 designer: 'Visual Designer',
                 version: '1.0',
+                pdfOffsetX: this.pdfOffsetX || 0,
+                pdfOffsetY: this.pdfOffsetY || 0,
                 elements: this.fields.map(field => {
                     const element = {
                         type: 'text',
@@ -1987,11 +2055,20 @@ class VisualDesigner {
                     }
                     pdf.setFontSize(field.fontSize);
                     
-                    // Calculate position (scale from canvas to PDF)
+                    // SIMPLE: Use the actual canvas dimensions (what was working)
                     const scaleX = 288 / this.canvas.width;
                     const scaleY = 432 / this.canvas.height;
-                    const x = field.x * scaleX;
-                    const y = field.y * scaleY;
+                    let x = field.x * scaleX;
+                    let y = field.y * scaleY;
+                    
+                    // Apply user-defined offsets for fine-tuning
+                    x += (this.pdfOffsetX || 0);
+                    y += (this.pdfOffsetY || 0);
+                    
+                    console.log(`🔍 STANDARDIZED: Field(${field.x}, ${field.y}) -> PDF(${x.toFixed(1)}, ${y.toFixed(1)}) [Scale: 0.5x0.5]`);
+                    if (this.pdfOffsetX || this.pdfOffsetY) {
+                        console.log(`🎯 Applied Offset: X=${this.pdfOffsetX || 0}, Y=${this.pdfOffsetY || 0}`);
+                    }
                     
                     // Apply text alignment
                     let align = 'left';
@@ -2028,6 +2105,35 @@ class VisualDesigner {
         }
     }
     
+    applyOffset() {
+        console.log('🎯 Applying PDF offset:', this.pdfOffsetX, this.pdfOffsetY);
+        
+        // Update the input values to match internal state
+        const pdfOffsetX = document.getElementById('pdfOffsetX');
+        const pdfOffsetY = document.getElementById('pdfOffsetY');
+        
+        if (pdfOffsetX) this.pdfOffsetX = parseInt(pdfOffsetX.value) || 0;
+        if (pdfOffsetY) this.pdfOffsetY = parseInt(pdfOffsetY.value) || 0;
+        
+        console.log('🎯 New offset values:', this.pdfOffsetX, this.pdfOffsetY);
+        
+        // Trigger a test print with the new offset
+        this.testPrint();
+    }
+    
+    resetOffset() {
+        console.log('🎯 Resetting PDF offset to 0,0');
+        this.pdfOffsetX = 0;
+        this.pdfOffsetY = 0;
+        
+        // Update the input fields
+        const pdfOffsetX = document.getElementById('pdfOffsetX');
+        const pdfOffsetY = document.getElementById('pdfOffsetY');
+        
+        if (pdfOffsetX) pdfOffsetX.value = '0';
+        if (pdfOffsetY) pdfOffsetY.value = '0';
+    }
+
     async testPrint() {
         console.log('🖨️ VISUAL DESIGNER testPrint() called');
         console.log('🖨️ Fields count:', this.fields.length);

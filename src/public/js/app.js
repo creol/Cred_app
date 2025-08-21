@@ -1084,26 +1084,36 @@ async function showDetailedPreview() {
     
     console.log('Final Contact Data for PDF:', contactData);
     
-    // Generate PDF preview - check if it's a Visual Designer template
+    // Generate PDF preview - use Visual Designer's own accurate method
     let pdfBlob;
     
     if (currentTemplate.category === 'Visual Designer' || 
         (currentTemplate.config && currentTemplate.config.designer === 'Visual Designer')) {
-        console.log('Using Visual Designer PDF generation');
+        console.log('Using Visual Designer for preview with real contact data');
         
-        // Use Visual Designer's PDF generation
-        let pdfDoc;
-        if (window.visualDesigner && window.visualDesigner.backgroundImage) {
-            // Use existing Visual Designer instance if it has the template loaded
-            pdfDoc = await window.visualDesigner.generatePDF(contactData);
-        } else {
-            // Generate PDF directly from template data without full Visual Designer instance
-            pdfDoc = await generateVisualDesignerPDF(currentTemplate, contactData);
+        // Ensure Visual Designer instance exists and has the template loaded
+        if (!window.visualDesigner) {
+            console.log('Creating Visual Designer instance for preview');
+            window.visualDesigner = new VisualDesigner();
+            await window.visualDesigner.init();
         }
+        
+        // Load the template if needed
+        if (!window.visualDesigner.fields.length) {
+            console.log('Loading template into Visual Designer for preview');
+            await window.visualDesigner.loadTemplate(currentTemplate);
+        }
+        
+        // Use Visual Designer's own accurate PDF generation
+        const pdfDoc = await window.visualDesigner.generatePDF(contactData);
         
         // Convert PDF document to blob
         if (pdfDoc) {
             pdfBlob = pdfDoc.output('blob');
+        } else {
+            console.warn('Visual Designer PDF generation failed for preview');
+            showError('Failed to generate PDF preview using Visual Designer');
+            return;
         }
     } else {
         console.log('Using legacy PDF generation');
@@ -1193,21 +1203,31 @@ async function printCredential() {
             // Check if it's a Visual Designer template
             if (currentTemplate.category === 'Visual Designer' || 
                 (currentTemplate.config && currentTemplate.config.designer === 'Visual Designer')) {
-                console.log('Using Visual Designer PDF generation for printing');
+                console.log('Using Visual Designer for printing with real contact data');
                 
-                // Use Visual Designer's PDF generation
-                let pdfDoc;
-                if (window.visualDesigner && window.visualDesigner.backgroundImage) {
-                    // Use existing Visual Designer instance if it has the template loaded
-                    pdfDoc = await window.visualDesigner.generatePDF(mergedContactData);
-                } else {
-                    // Generate PDF directly from template data without full Visual Designer instance
-                    pdfDoc = await generateVisualDesignerPDF(currentTemplate, mergedContactData);
+                // Ensure Visual Designer instance exists and has the template loaded
+                if (!window.visualDesigner) {
+                    console.log('Creating Visual Designer instance for printing');
+                    window.visualDesigner = new VisualDesigner();
+                    await window.visualDesigner.init();
                 }
+                
+                // Load the template if needed
+                if (!window.visualDesigner.fields.length) {
+                    console.log('Loading template into Visual Designer for printing');
+                    await window.visualDesigner.loadTemplate(currentTemplate);
+                }
+                
+                // Use Visual Designer's own accurate PDF generation with real contact data
+                const pdfDoc = await window.visualDesigner.generatePDF(mergedContactData);
                 
                 // Convert PDF document to blob
                 if (pdfDoc) {
                     pdfBlob = pdfDoc.output('blob');
+                } else {
+                    console.warn('Visual Designer PDF generation failed for printing');
+                    showError('Failed to generate PDF using Visual Designer');
+                    return;
                 }
             } else {
                 console.log('Using legacy PDF generation for printing');
@@ -3542,28 +3562,20 @@ async function generateVisualDesignerPDF(template, contactData) {
                 }
                 pdf.setFontSize(element.fontSize || 12);
                 
-                // Calculate position (scale from canvas to PDF - match Visual Designer exactly)
-                // Always use the standard 576x864 canvas dimensions that Visual Designer uses
-                const actualCanvasWidth = 576;
-                const actualCanvasHeight = 864;
-                
-                const scaleX = 288 / actualCanvasWidth;
-                const scaleY = 432 / actualCanvasHeight;
-                
-                console.log(`📐 Using standard Visual Designer canvas dimensions: ${actualCanvasWidth}x${actualCanvasHeight}`);
+                // STANDARDIZED: Simple 0.5 scaling for 576x864 -> 288x432
+                const scaleX = 0.5;  // 288 / 576
+                const scaleY = 0.5;  // 432 / 864
                 const x = element.x * scaleX;
                 const y = element.y * scaleY;
                 
-                console.log(`📍 Position calc: standard canvas(${actualCanvasWidth}x${actualCanvasHeight}) -> PDF(288x432)`);
-                console.log(`📍 Scale: ${scaleX.toFixed(3)}x, ${scaleY.toFixed(3)}y`);
-                console.log(`📍 Element at (${element.x}, ${element.y}) -> PDF (${x.toFixed(1)}, ${y.toFixed(1)})`);
+                console.log(`📍 STANDARDIZED: VD(${element.x}, ${element.y}) -> PDF(${x.toFixed(1)}, ${y.toFixed(1)}) [Scale: 0.5x0.5]`);
                 
-                // Apply text alignment
+                // Apply text alignment exactly like Visual Designer
                 let align = 'left';
                 if (element.textAlign === 'center') align = 'center';
                 else if (element.textAlign === 'right') align = 'right';
                 
-                // Add text to PDF (match Visual Designer positioning exactly)
+                // Add text to PDF with same positioning as Visual Designer
                 const finalY = y + (element.fontSize || 12);
                 pdf.text(text, x, finalY, { align: align });
                 
@@ -3614,33 +3626,11 @@ function generatePdf(template, contactData) {
     
     // Process each element in the template
     template.config.elements.forEach(element => {
-        let x = element.x * 72; // Convert inches to points
-        let y = element.y * 72;
-        let width = element.width * 72;
-        let height = element.height * 72;
-        
-        // Check if element is in bottom half (y >= 3 inches = 216 points)
-        const isInBottomHalf = element.y >= 3;
-        
-        if (isInBottomHalf) {
-            // For bottom half elements, we need to flip them for folding
-            // The bottom half should be upside down so when folded, it appears right-side up
-            
-            // Calculate the new position for the flipped element
-            // The element should be positioned so that when the label is folded at y=3 inches,
-            // the element appears in the correct orientation on the back side
-            
-            // Flip the element vertically around the fold line (y = 3 inches = 216 points)
-            const originalY = element.y * 72;
-            const elementHeight = element.height * 72;
-            const foldLine = 216; // 3 inches in points
-            
-            // Calculate new Y position: mirror around the fold line
-            y = foldLine + (foldLine - originalY - elementHeight);
-            
-            // Also flip the text rotation for proper orientation
-            // We'll handle this in the text rendering section
-        }
+        // CORRECT coordinate conversion: Visual Designer canvas (576x864) -> PDF (288x432)
+        const scaleX = 288 / 576; // = 0.5
+        const scaleY = 432 / 864; // = 0.5
+        const x = element.x * scaleX;
+        const y = element.y * scaleY;
         
         if (element.type === 'text') {
             // Process text content with placeholders
@@ -3733,74 +3723,30 @@ function generatePdf(template, contactData) {
                 doc.setFont('helvetica', 'bold');
             }
             
-            // Set text alignment
-            let textX = x;
+            // Text positioning with proper alignment (matching Visual Designer)
+            let align = 'left';
+            if (element.textAlign === 'center') align = 'center';
+            else if (element.textAlign === 'right') align = 'right';
             
-            // For bottom half elements, we need to rotate the text 180 degrees
-            if (isInBottomHalf) {
-                // For jsPDF, we need to use a different approach for rotation
-                // We'll use the text rotation parameter instead of graphics state
-                const centerX = x + (width / 2);
-                const centerY = y + (height / 2);
-                
-                // Calculate the angle for rotation (180 degrees)
-                const angle = 180;
-                
-                // Render text with rotation
-                if (element.align === 'center') {
-                    textX = x + (width / 2);
-                    doc.text(content, textX, y + fontSize, { align: 'center', angle: angle });
-                } else if (element.align === 'right') {
-                    textX = x + width;
-                    doc.text(content, textX, y + fontSize, { align: 'right', angle: angle });
-                } else {
-                    doc.text(content, textX, y + fontSize, { angle: angle });
-                }
-            } else {
-                // Normal text rendering for top half
-                if (element.align === 'center') {
-                    textX = x + (width / 2);
-                    doc.text(content, textX, y + fontSize, { align: 'center' });
-                } else if (element.align === 'right') {
-                    textX = x + width;
-                    doc.text(content, textX, y + fontSize, { align: 'right' });
-                } else {
-                    doc.text(content, textX, y + fontSize);
-                }
-            }
+            // Add text to PDF (same positioning as Visual Designer)
+            const finalY = y + fontSize;
+            doc.text(content, x, finalY, { align: align });
             
             // Reset font to normal
             doc.setFont('helvetica', 'normal');
         } else if (element.type === 'checkbox') {
-            // For bottom half elements, rotate the checkbox
-            if (isInBottomHalf) {
-                // For checkboxes in bottom half, we'll flip the checkmark pattern
-                // Draw checkbox normally but with flipped checkmark
-                doc.rect(x, y, 20, 20);
-                if (element.checked) {
-                    // Draw checkmark in flipped orientation
-                    doc.line(x + 15, y + 10, x + 12, y + 5);
-                    doc.line(x + 12, y + 5, x + 5, y + 15);
-                }
-                
-                // Add label with rotation
-                if (element.label) {
-                    doc.setFontSize(12);
-                    doc.text(element.label, x + 25, y + 15, { angle: 180 });
-                }
-            } else {
-                // Normal checkbox for top half
-                doc.rect(x, y, 20, 20);
-                if (element.checked) {
-                    doc.line(x + 5, y + 10, x + 8, y + 15);
-                    doc.line(x + 8, y + 15, x + 15, y + 5);
-                }
-                
-                // Add label
-                if (element.label) {
-                    doc.setFontSize(12);
-                    doc.text(element.label, x + 25, y + 15);
-                }
+            // Simple checkbox rendering
+            doc.rect(x, y, 20, 20);
+            if (element.checked) {
+                // Draw normal checkmark
+                doc.line(x + 5, y + 10, x + 8, y + 15);
+                doc.line(x + 8, y + 15, x + 15, y + 5);
+            }
+            
+            // Add label
+            if (element.label) {
+                doc.setFontSize(12);
+                doc.text(element.label, x + 25, y + 15);
             }
             
         } else if (element.type === 'image' && element.imageData) {
@@ -3816,40 +3762,33 @@ function generatePdf(template, contactData) {
                     imageType = parts[0].split(':')[1].split(';')[0].split('/')[1].toUpperCase();
                 }
                 
-                // For bottom half elements, rotate the image
-                if (isInBottomHalf) {
-                    // For images in bottom half, we'll use the rotation parameter
-                    doc.addImage(imageData, imageType, x, y, width, height, undefined, 'FAST', 180);
-                } else {
-                    // Normal image for top half
-                    doc.addImage(imageData, imageType, x, y, width, height);
-                }
+                // Simple image rendering with correct scaling
+                const scaledWidth = element.width * scaleX;
+                const scaledHeight = element.height * scaleY;
+                doc.addImage(imageData, imageType, x, y, scaledWidth, scaledHeight);
             } catch (error) {
                 console.error('Failed to add image to PDF:', error);
                 // Fallback to placeholder
-                doc.rect(x, y, width, height);
+                const scaledWidth = element.width * scaleX;
+                const scaledHeight = element.height * scaleY;
+                doc.rect(x, y, scaledWidth, scaledHeight);
                 doc.setFontSize(10);
-                if (isInBottomHalf) {
-                    doc.text('[Image Error]', x + (width / 2), y + (height / 2), { align: 'center', angle: 180 });
-                } else {
-                    doc.text('[Image Error]', x + (width / 2), y + (height / 2), { align: 'center' });
-                }
+                doc.text('[Image Error]', x + (scaledWidth / 2), y + (scaledHeight / 2), { align: 'center' });
             }
         } else if (element.type === 'image') {
             // Fallback for images without data
-            doc.rect(x, y, width, height);
+            const scaledWidth = element.width * scaleX;
+            const scaledHeight = element.height * scaleY;
+            doc.rect(x, y, scaledWidth, scaledHeight);
             doc.setFontSize(10);
-            if (isInBottomHalf) {
-                doc.text('[No Image]', x + (width / 2), y + (height / 2), { align: 'center', angle: 180 });
-            } else {
-                doc.text('[No Image]', x + (width / 2), y + (height / 2), { align: 'center' });
-            }
+            doc.text('[No Image]', x + (scaledWidth / 2), y + (scaledHeight / 2), { align: 'center' });
         } else if (element.type === 'line') {
-            // For bottom half elements, we'll draw the line in reverse
+            // Simple line rendering with correct scaling
             const thickness = element.thickness || 2;
             const lineY = y + (thickness / 2);
+            const scaledWidth = element.width * scaleX;
             
-            if (isInBottomHalf) {
+            if (false) { // Simplified - no fold logic
                 // For bottom half, draw line from right to left to simulate rotation
                 if (element.style === 'dashed') {
                     // Draw dashed line in reverse
@@ -3880,8 +3819,8 @@ function generatePdf(template, contactData) {
                     const dashLength = 10;
                     const gapLength = 5;
                     let currentX = x;
-                    while (currentX < x + width) {
-                        const endX = Math.min(currentX + dashLength, x + width);
+                    while (currentX < x + scaledWidth) {
+                        const endX = Math.min(currentX + dashLength, x + scaledWidth);
                         doc.line(currentX, lineY, endX, lineY);
                         currentX = endX + gapLength;
                     }
@@ -3889,13 +3828,13 @@ function generatePdf(template, contactData) {
                     // Draw dotted line
                     const dotSpacing = 8;
                     let currentX = x;
-                    while (currentX < x + width) {
+                    while (currentX < x + scaledWidth) {
                         doc.circle(currentX, lineY, thickness / 2, 'F');
                         currentX += dotSpacing;
                     }
                 } else {
                     // Draw solid line
-                    doc.line(x, lineY, x + width, lineY);
+                    doc.line(x, lineY, x + scaledWidth, lineY);
                 }
             }
             
@@ -4066,7 +4005,7 @@ function generatePdf(template, contactData) {
                 
                 if (testWidth > maxWidth && line !== '') {
                     // Draw current line and start new one
-                    if (isInBottomHalf) {
+                    if (false) { // Simplified - no fold logic
                         doc.text(line.trim(), textX, currentY, { angle: 180 });
                     } else {
                         doc.text(line.trim(), textX, currentY);
@@ -4080,7 +4019,7 @@ function generatePdf(template, contactData) {
             
             // Draw the last line
             if (line.trim()) {
-                if (isInBottomHalf) {
+                if (false) { // Simplified - no fold logic
                     doc.text(line.trim(), textX, currentY, { angle: 180 });
                 } else {
                     doc.text(line.trim(), textX, currentY);

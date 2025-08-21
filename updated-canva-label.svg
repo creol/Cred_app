@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="288" height="432" viewBox="0 0 288 432" xmlns="http://www.w3.org/2000/svg">
+  <!-- 4"x6" label (288x432 points at 72 DPI) -->
+  <rect width="288" height="432" fill="#ffffff" stroke="#cccccc" stroke-width="1"/>
+  
+  <text x="144" y="50" text-anchor="middle" font-family="Arial" font-size="18" font-weight="bold" fill="#333333">Hello, My Name Is</text>
+  
+  <text x="144" y="120" text-anchor="middle" font-family="Arial" font-size="28" font-weight="bold" fill="#000000">{{first_name}} {{last_name}}</text>
+  
+  <text x="144" y="180" text-anchor="middle" font-family="Arial" font-size="14" fill="#666666">{{email}}</text>
+  
+  <text x="144" y="210" text-anchor="middle" font-family="Arial" font-size="12" fill="#666666">{{address}}, {{city}}, {{state}} {{zip}}</text>
+  
+  <text x="144" y="300" text-anchor="middle" font-family="Arial" font-size="14" fill="#888888">{{eventName}}</text>
+  
+  <text x="144" y="330" text-anchor="middle" font-family="Arial" font-size="12" fill="#888888">{{eventDate}}</text>
+  
+  <line x1="0" y1="250" x2="288" y2="250" stroke="#cccccc" stroke-width="1" stroke-dasharray="5,5"/>
+  
+  <rect x="120" y="370" width="15" height="15" fill="none" stroke="#28a745" stroke-width="2"/>
+  <text x="145" y="382" font-family="Arial" font-size="12" fill="#28a745">Credentialed</text>
+</svg>
