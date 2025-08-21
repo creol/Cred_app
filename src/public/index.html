@@ -656,9 +656,14 @@
                                         <!-- Fields will be populated dynamically -->
                                     </select>
                                 </div>
-                                <button class="btn btn-sm btn-primary w-100 mb-4" id="visualAddFieldBtn">
-                                    <i class="fas fa-plus"></i> Add Field
-                                </button>
+                                <div class="btn-group w-100 mb-4" role="group">
+                                    <button class="btn btn-sm btn-primary" id="visualAddFieldBtn">
+                                        <i class="fas fa-plus"></i> Add Field
+                                    </button>
+                                    <button class="btn btn-sm btn-outline-secondary" id="refreshFieldsBtn" title="Refresh fields from CSV">
+                                        <i class="fas fa-sync-alt"></i>
+                                    </button>
+                                </div>
 
                                 <h6><i class="fas fa-cog"></i> Field Properties</h6>
                                 <div id="fieldProperties" class="d-none">
@@ -712,7 +717,15 @@
                                 <div class="mb-3">
                                     <div class="form-check form-check-sm mb-2">
                                         <input class="form-check-input" type="checkbox" id="snapToGridCheck" checked>
-                                        <label class="form-check-label" for="snapToGridCheck">Snap to Grid</label>
+                                        <label class="form-check-label" for="snapToGridCheck">Snap to Grid (5px)</label>
+                                    </div>
+                                    <div class="form-check form-check-sm mb-2">
+                                        <input class="form-check-input" type="checkbox" id="showCoordinatesCheck" checked>
+                                        <label class="form-check-label" for="showCoordinatesCheck">Show Coordinates</label>
+                                    </div>
+                                    <div class="form-check form-check-sm mb-2">
+                                        <input class="form-check-input" type="checkbox" id="showRulersCheck" checked>
+                                        <label class="form-check-label" for="showRulersCheck">Show Rulers</label>
                                     </div>
                                     <div class="btn-group w-100 mb-2" role="group">
                                         <button type="button" class="btn btn-outline-primary btn-sm" id="centerHorizontalBtn" title="Center Horizontally">
@@ -766,9 +779,36 @@
                                 <button class="btn btn-sm btn-info w-100 mb-2" id="previewTemplateBtn">
                                     <i class="fas fa-eye"></i> Preview
                                 </button>
-                                <button class="btn btn-sm btn-warning w-100" id="visualTestPrintBtn">
+                                <button class="btn btn-sm btn-warning w-100 mb-3" id="visualTestPrintBtn">
                                     <i class="fas fa-print"></i> Test Print
                                 </button>
+                                
+                                <h6><i class="fas fa-eye"></i> Live Data Preview</h6>
+                                <div class="mb-3">
+                                    <button class="btn btn-sm btn-info w-100 mb-2" id="loadPreviewDataBtn">
+                                        <i class="fas fa-database"></i> Load Preview Data
+                                    </button>
+                                    <div id="previewNavigation" class="d-none">
+                                        <div class="row g-1 mb-2">
+                                            <div class="col-4">
+                                                <button class="btn btn-sm btn-outline-secondary w-100" id="prevRecordBtn" title="Previous Record">
+                                                    <i class="fas fa-chevron-left"></i>
+                                                </button>
+                                            </div>
+                                            <div class="col-4 text-center d-flex align-items-center justify-content-center">
+                                                <small class="text-muted" id="recordCounter">1 / 10</small>
+                                            </div>
+                                            <div class="col-4">
+                                                <button class="btn btn-sm btn-outline-secondary w-100" id="nextRecordBtn" title="Next Record">
+                                                    <i class="fas fa-chevron-right"></i>
+                                                </button>
+                                            </div>
+                                        </div>
+                                        <button class="btn btn-sm btn-outline-danger w-100" id="clearPreviewBtn">
+                                            <i class="fas fa-times"></i> Clear Preview
+                                        </button>
+                                    </div>
+                                </div>
                             </div>
 
                             <!-- Main Canvas Area -->

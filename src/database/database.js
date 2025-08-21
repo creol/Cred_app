@@ -277,7 +277,7 @@ class Database {
   }
 
   // Contact operations
-  async importContacts(eventId, contacts, csvImportId) {
+  async importContacts(eventId, contacts, csvImportId, normalizedHeaders = null, originalHeaders = null) {
     const contactIds = [];
     
     for (let i = 0; i < contacts.length; i++) {
@@ -287,8 +287,30 @@ class Database {
       
       // Debug: Log the first contact to see field structure
       if (i === 0) {
-        console.log('Sample contact data structure:', contact);
-        console.log('Available keys:', Object.keys(contact));
+        console.log('🔍 Database importContacts - Sample contact data structure:', contact);
+        console.log('🔍 Available original keys:', Object.keys(contact));
+        console.log('🔍 normalizedHeaders provided:', normalizedHeaders ? 'YES' : 'NO');
+        console.log('🔍 originalHeaders provided:', originalHeaders ? 'YES' : 'NO');
+        if (normalizedHeaders) {
+          console.log('🔍 Normalized headers:', normalizedHeaders);
+        }
+        if (originalHeaders) {
+          console.log('🔍 Original headers:', originalHeaders);
+        }
+      }
+      
+      // Create normalized contact data if headers are provided
+      let normalizedContact = {};
+      if (normalizedHeaders && originalHeaders) {
+        // Map original contact data to normalized field names
+        originalHeaders.forEach((originalHeader, index) => {
+          const normalizedHeader = normalizedHeaders[index];
+          normalizedContact[normalizedHeader] = contact[originalHeader] || '';
+        });
+        console.log(i === 0 ? '🔍 Sample normalized contact:' : '', i === 0 ? normalizedContact : '');
+      } else {
+        // Fallback to original contact structure
+        normalizedContact = contact;
       }
       
       // Extract common fields
@@ -306,7 +328,7 @@ class Database {
         zip: contact.zip || contact['ZIP'] || contact['zip'] || contact['Zip Code'] || contact['Zip'] || contact['zipcode'] || contact['ZIPCODE'] || '',
         phone: contact.phone || contact['Phone'] || contact['phone'] || contact['mobile'] || contact['Mobile'] || contact['cell'] || contact['Cell'] || '',
         email: contact.email || contact['Email'] || contact['email'] || '',
-        custom_fields: JSON.stringify(contact),
+        custom_fields: JSON.stringify(normalizedContact),
         created_at: now,
         updated_at: now
       };

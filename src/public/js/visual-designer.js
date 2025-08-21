@@ -17,8 +17,14 @@ class VisualDesigner {
         this.isDragging = false;
         this.scale = 1;
         this.snapToGrid = true;
-        this.gridSize = 10;
+        this.gridSize = 5; // Finer grid for better precision
+        this.showCoordinates = true;
+        this.showRulers = true;
         this.availableFields = [];
+        this.previewData = null;
+        this.previewRecords = [];
+        this.currentPreviewIndex = 0;
+        this.isPreviewMode = false;
         
         console.log('🎯 VisualDesigner calling init()');
         this.init();
@@ -465,6 +471,25 @@ class VisualDesigner {
         if (snapToGridCheck) {
             snapToGridCheck.addEventListener('change', (e) => {
                 this.snapToGrid = e.target.checked;
+                this.draw(); // Redraw to show/hide grid
+            });
+        }
+        
+        // Show coordinates checkbox
+        const showCoordinatesCheck = document.getElementById('showCoordinatesCheck');
+        if (showCoordinatesCheck) {
+            showCoordinatesCheck.addEventListener('change', (e) => {
+                this.showCoordinates = e.target.checked;
+                this.draw(); // Redraw to show/hide coordinates
+            });
+        }
+        
+        // Show rulers checkbox
+        const showRulersCheck = document.getElementById('showRulersCheck');
+        if (showRulersCheck) {
+            showRulersCheck.addEventListener('change', (e) => {
+                this.showRulers = e.target.checked;
+                this.draw(); // Redraw to show/hide rulers
             });
         }
 
@@ -537,6 +562,61 @@ class VisualDesigner {
         if (distributeHorizontalBtn) {
             distributeHorizontalBtn.addEventListener('click', () => {
                 this.distributeSelectedFields('horizontal');
+            });
+        }
+        
+        // Refresh fields button
+        const refreshFieldsBtn = document.getElementById('refreshFieldsBtn');
+        if (refreshFieldsBtn) {
+            refreshFieldsBtn.addEventListener('click', async () => {
+                console.log('🔄 Manual field refresh requested...');
+                refreshFieldsBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i>';
+                refreshFieldsBtn.disabled = true;
+                
+                try {
+                    await this.loadAvailableFields();
+                    this.updateFieldSelector();
+                    if (typeof showSuccess === 'function') {
+                        showSuccess('Fields refreshed successfully!');
+                    }
+                } catch (error) {
+                    console.error('Failed to refresh fields:', error);
+                    if (typeof showError === 'function') {
+                        showError('Failed to refresh fields. Please try again.');
+                    }
+                } finally {
+                    refreshFieldsBtn.innerHTML = '<i class="fas fa-sync-alt"></i>';
+                    refreshFieldsBtn.disabled = false;
+                }
+            });
+        }
+        
+        // Data preview controls
+        const loadPreviewDataBtn = document.getElementById('loadPreviewDataBtn');
+        if (loadPreviewDataBtn) {
+            loadPreviewDataBtn.addEventListener('click', () => {
+                this.loadPreviewData();
+            });
+        }
+        
+        const prevRecordBtn = document.getElementById('prevRecordBtn');
+        if (prevRecordBtn) {
+            prevRecordBtn.addEventListener('click', () => {
+                this.showPreviousRecord();
+            });
+        }
+        
+        const nextRecordBtn = document.getElementById('nextRecordBtn');
+        if (nextRecordBtn) {
+            nextRecordBtn.addEventListener('click', () => {
+                this.showNextRecord();
+            });
+        }
+        
+        const clearPreviewBtn = document.getElementById('clearPreviewBtn');
+        if (clearPreviewBtn) {
+            clearPreviewBtn.addEventListener('click', () => {
+                this.clearPreview();
             });
         }
     }
@@ -662,13 +742,22 @@ class VisualDesigner {
             fieldLabel = 'Custom: ' + customText.substring(0, 20) + (customText.length > 20 ? '...' : '');
         }
         
+        // Smart positioning: stack fields with offset to avoid overlapping
+        const existingFieldsAtCenter = this.fields.filter(f => 
+            Math.abs(f.x - (this.canvas.width / 2 - 50)) < 20 && 
+            Math.abs(f.y - (this.canvas.height / 2 - 10)) < 20
+        ).length;
+        
+        const offsetX = (existingFieldsAtCenter % 3) * 30; // Horizontal spread
+        const offsetY = Math.floor(existingFieldsAtCenter / 3) * 30; // Vertical stack
+        
         const field = {
             id: Date.now(),
             type: fieldType,
             content: fieldContent, // Store the actual content
             label: fieldLabel,
-            x: this.canvas.width / 2 - 50,
-            y: this.canvas.height / 2 - 10,
+            x: (this.canvas.width / 2 - 50) + offsetX,
+            y: (this.canvas.height / 2 - 10) + offsetY,
             fontSize: 12,
             fontFamily: 'Arial',
             bold: false,
@@ -849,6 +938,8 @@ class VisualDesigner {
         
         console.log('Field selector updated with', this.availableFields.length, 'fields');
         console.log('CSV fields found:', csvFields.length);
+        console.log('🔍 All available fields:', this.availableFields);
+        console.log('🔍 CSV-specific fields:', csvFields);
     }
 
     formatFieldName(fieldName) {
@@ -861,10 +952,12 @@ class VisualDesigner {
         if (fieldName === 'eventName') return 'Event Name';
         if (fieldName === 'eventDate') return 'Event Date';
         
-        // Convert camelCase to readable format
+        // Convert normalized field names to readable format
         return fieldName
-            .replace(/([A-Z])/g, ' $1')
-            .replace(/^./, str => str.toUpperCase())
+            .replace(/_/g, ' ')  // Replace underscores with spaces
+            .replace(/([A-Z])/g, ' $1')  // Add space before capital letters
+            .replace(/^./, str => str.toUpperCase())  // Capitalize first letter
+            .replace(/\s+/g, ' ')  // Remove extra spaces
             .trim();
     }
     
@@ -1064,10 +1157,245 @@ class VisualDesigner {
             this.ctx.fillText('Upload a background image to get started', this.canvas.width / 2, this.canvas.height / 2);
         }
         
+        // Draw grid overlay for better positioning
+        if (this.snapToGrid) {
+            this.ctx.strokeStyle = 'rgba(200, 200, 200, 0.3)';
+            this.ctx.lineWidth = 0.5;
+            
+            // Vertical grid lines
+            for (let x = 0; x <= this.canvas.width; x += this.gridSize) {
+                this.ctx.beginPath();
+                this.ctx.moveTo(x, 0);
+                this.ctx.lineTo(x, this.canvas.height);
+                this.ctx.stroke();
+            }
+            
+            // Horizontal grid lines
+            for (let y = 0; y <= this.canvas.height; y += this.gridSize) {
+                this.ctx.beginPath();
+                this.ctx.moveTo(0, y);
+                this.ctx.lineTo(this.canvas.width, y);
+                this.ctx.stroke();
+            }
+        }
+        
+        // Draw rulers if enabled
+        if (this.showRulers) {
+            this.drawRulers();
+        }
+        
         // Draw fields
         this.fields.forEach(field => {
             this.drawField(field);
         });
+        
+        // Show coordinates for selected field
+        if (this.selectedField && this.showCoordinates) {
+            this.drawCoordinateDisplay();
+        }
+        
+        // Show preview mode indicator
+        if (this.isPreviewMode) {
+            this.drawPreviewIndicator();
+        }
+    }
+    
+    drawPreviewIndicator() {
+        // Preview mode banner
+        this.ctx.fillStyle = 'rgba(23, 162, 184, 0.9)';
+        this.ctx.fillRect(0, 0, this.canvas.width, 25);
+        
+        this.ctx.fillStyle = 'white';
+        this.ctx.font = 'bold 12px Arial';
+        this.ctx.textAlign = 'center';
+        this.ctx.fillText(
+            `📊 PREVIEW MODE - Showing Record ${this.currentPreviewIndex + 1} of ${this.previewRecords.length}`, 
+            this.canvas.width / 2, 
+            15
+        );
+    }
+    
+    drawRulers() {
+        const rulerSize = 20;
+        
+        // Top ruler (horizontal)
+        this.ctx.fillStyle = 'rgba(240, 240, 240, 0.9)';
+        this.ctx.fillRect(0, 0, this.canvas.width, rulerSize);
+        
+        // Left ruler (vertical)
+        this.ctx.fillRect(0, 0, rulerSize, this.canvas.height);
+        
+        this.ctx.strokeStyle = '#666';
+        this.ctx.lineWidth = 1;
+        this.ctx.font = '10px Arial';
+        this.ctx.fillStyle = '#333';
+        this.ctx.textAlign = 'center';
+        
+        // Horizontal ruler marks
+        for (let x = 0; x <= this.canvas.width; x += 50) {
+            this.ctx.beginPath();
+            this.ctx.moveTo(x, 0);
+            this.ctx.lineTo(x, rulerSize);
+            this.ctx.stroke();
+            
+            if (x > 0) {
+                this.ctx.fillText(x.toString(), x, rulerSize - 5);
+            }
+        }
+        
+        // Vertical ruler marks
+        this.ctx.textAlign = 'left';
+        for (let y = 0; y <= this.canvas.height; y += 50) {
+            this.ctx.beginPath();
+            this.ctx.moveTo(0, y);
+            this.ctx.lineTo(rulerSize, y);
+            this.ctx.stroke();
+            
+            if (y > 0) {
+                this.ctx.save();
+                this.ctx.translate(5, y);
+                this.ctx.rotate(-Math.PI / 2);
+                this.ctx.fillText(y.toString(), 0, 0);
+                this.ctx.restore();
+            }
+        }
+    }
+    
+    drawCoordinateDisplay() {
+        const field = this.selectedField;
+        const x = field.x;
+        const y = field.y;
+        
+        // Display coordinates near the selected field
+        this.ctx.fillStyle = 'rgba(0, 0, 0, 0.8)';
+        this.ctx.font = '12px Arial';
+        this.ctx.textAlign = 'left';
+        
+        const coordText = `(${Math.round(x)}, ${Math.round(y)})`;
+        const textWidth = this.ctx.measureText(coordText).width;
+        
+        // Position coordinate display above the field
+        let displayX = x;
+        let displayY = y - 5;
+        
+        // Adjust if it would go off canvas
+        if (displayY < 15) displayY = y + field.height + 15;
+        if (displayX + textWidth > this.canvas.width) displayX = this.canvas.width - textWidth - 5;
+        
+        // Background for coordinates
+        this.ctx.fillStyle = 'rgba(255, 255, 255, 0.9)';
+        this.ctx.fillRect(displayX - 2, displayY - 12, textWidth + 4, 14);
+        
+        // Coordinate text
+        this.ctx.fillStyle = '#333';
+        this.ctx.fillText(coordText, displayX, displayY);
+    }
+    
+    // Data preview methods
+    async loadPreviewData() {
+        if (!window.currentEvent) {
+            if (typeof showError === 'function') {
+                showError('No event selected. Please select an event first.');
+            }
+            return;
+        }
+        
+        console.log('🔍 Loading preview data for event:', window.currentEvent.id);
+        
+        try {
+            const response = await fetch(`/api/events/${window.currentEvent.id}/sample-records`);
+            
+            if (!response.ok) {
+                throw new Error(`Failed to load preview data: ${response.status}`);
+            }
+            
+            this.previewRecords = await response.json();
+            this.currentPreviewIndex = 0;
+            this.isPreviewMode = true;
+            
+            console.log('📊 Loaded preview data:', this.previewRecords.length, 'records');
+            
+            // Show navigation controls
+            const navigation = document.getElementById('previewNavigation');
+            if (navigation) {
+                navigation.classList.remove('d-none');
+            }
+            
+            // Update UI
+            this.updatePreviewDisplay();
+            this.draw();
+            
+            if (typeof showSuccess === 'function') {
+                showSuccess(`Loaded ${this.previewRecords.length} preview records`);
+            }
+            
+        } catch (error) {
+            console.error('Failed to load preview data:', error);
+            if (typeof showError === 'function') {
+                showError('Failed to load preview data. Please try again.');
+            }
+        }
+    }
+    
+    showPreviousRecord() {
+        if (!this.isPreviewMode || this.previewRecords.length === 0) return;
+        
+        this.currentPreviewIndex = Math.max(0, this.currentPreviewIndex - 1);
+        this.updatePreviewDisplay();
+        this.draw();
+    }
+    
+    showNextRecord() {
+        if (!this.isPreviewMode || this.previewRecords.length === 0) return;
+        
+        this.currentPreviewIndex = Math.min(this.previewRecords.length - 1, this.currentPreviewIndex + 1);
+        this.updatePreviewDisplay();
+        this.draw();
+    }
+    
+    updatePreviewDisplay() {
+        if (!this.isPreviewMode || this.previewRecords.length === 0) return;
+        
+        // Update counter
+        const counter = document.getElementById('recordCounter');
+        if (counter) {
+            counter.textContent = `${this.currentPreviewIndex + 1} / ${this.previewRecords.length}`;
+        }
+        
+        // Update button states
+        const prevBtn = document.getElementById('prevRecordBtn');
+        const nextBtn = document.getElementById('nextRecordBtn');
+        
+        if (prevBtn) {
+            prevBtn.disabled = this.currentPreviewIndex === 0;
+        }
+        
+        if (nextBtn) {
+            nextBtn.disabled = this.currentPreviewIndex === this.previewRecords.length - 1;
+        }
+        
+        // Set current preview data
+        this.previewData = this.previewRecords[this.currentPreviewIndex];
+        console.log('👀 Current preview record:', this.previewData);
+    }
+    
+    clearPreview() {
+        this.isPreviewMode = false;
+        this.previewData = null;
+        this.previewRecords = [];
+        this.currentPreviewIndex = 0;
+        
+        // Hide navigation controls
+        const navigation = document.getElementById('previewNavigation');
+        if (navigation) {
+            navigation.classList.add('d-none');
+        }
+        
+        this.draw();
+        
+        if (typeof showSuccess === 'function') {
+            showSuccess('Preview data cleared');
+        }
     }
     
     drawField(field) {
@@ -1114,10 +1442,14 @@ class VisualDesigner {
         this.ctx.font = `${field.bold ? 'bold ' : ''}${field.fontSize}px ${field.fontFamily}`;
         this.ctx.textBaseline = 'middle';
         
-        // For display in the designer, show user-friendly labels instead of template syntax
+        // For display in the designer, show preview data or user-friendly labels
         let text;
         if (field.type === 'customText') {
             text = field.content || 'Custom Text';
+        } else if (this.isPreviewMode && this.previewData) {
+            // Show actual data from preview record
+            const fieldValue = window.mapFieldValue ? window.mapFieldValue(field.type, this.previewData) : null;
+            text = fieldValue || `[${field.type}]`;
         } else {
             // Show a user-friendly label instead of {{template}} syntax
             text = this.getFieldDisplayName(field.type);
@@ -1638,11 +1970,13 @@ class VisualDesigner {
                         text = field.content || 'Custom Text';
                         console.log(`📝 Custom text field: "${text}"`);
                     } else {
-                        // For data fields, use the actual data from the test data object
-                        text = data[field.type] || `[${field.type}]`;
+                        // Use unified field mapping function
+                        const fieldValue = window.mapFieldValue ? window.mapFieldValue(field.type, data) : null;
+                        text = fieldValue || `[${field.type}]`;
+                        
                         console.log(`🔄 Data field ${field.type}:`);
                         console.log(`   - field.content: "${field.content}"`);
-                        console.log(`   - data[${field.type}]: "${data[field.type]}"`);
+                        console.log(`   - unified mapping result: "${fieldValue}"`);
                         console.log(`   - final text: "${text}"`);
                     }
                     

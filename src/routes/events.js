@@ -188,6 +188,10 @@ module.exports = function(database, config, logger, upload) {
         header.toLowerCase().replace(/\s+/g, '_').replace(/[^a-z0-9_]/g, '')
       );
       
+      // Debug: Show header transformation
+      console.log('🔍 IMMEDIATE - Original headers:', headers);
+      console.log('🔍 IMMEDIATE - Normalized headers:', normalizedHeaders);
+      
       const csvContent = [
         normalizedHeaders.join(','),
         ...contacts.map(row => 
@@ -199,8 +203,13 @@ module.exports = function(database, config, logger, upload) {
       
       await fs.writeFile(workingCopyPath, csvContent);
 
-      // Import contacts to database
-      const contactIds = await database.importContacts(eventId, contacts);
+      // Debug the headers before passing to database
+      console.log('🔍 CSV Import - Original headers:', headers);
+      console.log('🔍 CSV Import - Normalized headers:', normalizedHeaders);
+      console.log('🔍 CSV Import - Sample contact keys:', Object.keys(contacts[0] || {}));
+      
+      // Import contacts to database with normalized headers
+      const contactIds = await database.importContacts(eventId, contacts, null, normalizedHeaders, headers);
       
       // Record CSV import
       const csvImport = await database.recordCSVImport({
@@ -383,6 +392,60 @@ module.exports = function(database, config, logger, upload) {
         eventId: req.params.eventId 
       });
       res.status(500).json({ error: 'Failed to get CSV headers' });
+    }
+  });
+
+  // Get sample records for preview (first 10 records)
+  router.get('/:eventId/sample-records', async (req, res) => {
+    try {
+      const eventId = req.params.eventId;
+      const event = await database.getEvent(eventId);
+      
+      if (!event) {
+        return res.status(404).json({ error: 'Event not found' });
+      }
+
+      // Get first 10 contacts for this event
+      const contacts = await database.all(`
+        SELECT * FROM contacts 
+        WHERE event_id = ? 
+        ORDER BY original_row ASC 
+        LIMIT 10
+      `, [eventId]);
+
+      if (contacts.length === 0) {
+        return res.status(404).json({ error: 'No contacts found for this event' });
+      }
+
+      // Process contacts to include parsed custom fields
+      const processedContacts = contacts.map(contact => {
+        let customFields = {};
+        try {
+          if (contact.custom_fields) {
+            customFields = JSON.parse(contact.custom_fields);
+          }
+        } catch (e) {
+          console.warn('Failed to parse custom fields for contact:', contact.id);
+        }
+
+        return {
+          ...contact,
+          custom_fields_parsed: customFields,
+          // Also merge custom fields into main object for easier access
+          ...customFields,
+          // Add standard event fields
+          eventName: event.name,
+          eventDate: event.date
+        };
+      });
+
+      res.json(processedContacts);
+    } catch (error) {
+      logger.error('Failed to get sample records', { 
+        error: error.message, 
+        eventId: req.params.eventId 
+      });
+      res.status(500).json({ error: 'Failed to get sample records' });
     }
   });
 

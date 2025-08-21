@@ -15,6 +15,63 @@ window.getCurrentEvent = function() {
     return currentEvent;
 };
 
+// Simplified field mapping function - uses normalized field names only
+window.mapFieldValue = function(fieldName, contactData) {
+    if (!contactData) return null;
+    
+    console.log(`🔍 mapFieldValue: Looking for "${fieldName}" in contact data`);
+    
+    // 1. Try exact match first (should work for normalized fields)
+    if (contactData[fieldName] !== undefined && contactData[fieldName] !== null && contactData[fieldName] !== '') {
+        console.log(`✅ Found exact match: ${fieldName} = "${contactData[fieldName]}"`);
+        return contactData[fieldName];
+    }
+    
+    // 2. Try standard app fields only (not CSV-specific mappings)
+    const standardMappings = {
+        'firstName': contactData.firstName || contactData.first_name || '',
+        'lastName': contactData.lastName || contactData.last_name || '',
+        'first_name': contactData.first_name || contactData.firstName || '',
+        'last_name': contactData.last_name || contactData.lastName || '',
+        'middleName': contactData.middleName || contactData.middle_name || '',
+        'middle_name': contactData.middle_name || contactData.middleName || '',
+        'birthDate': contactData.birthDate || contactData.birth_date || '',
+        'birth_date': contactData.birth_date || contactData.birthDate || '',
+        'eventName': contactData.eventName || '',
+        'eventDate': contactData.eventDate || ''
+    };
+    
+    if (standardMappings[fieldName] !== undefined && standardMappings[fieldName] !== '') {
+        console.log(`✅ Found standard mapping: ${fieldName} = "${standardMappings[fieldName]}"`);
+        return standardMappings[fieldName];
+    }
+    
+    // 3. Try custom fields (should contain normalized field names)
+    if (contactData.custom_fields) {
+        try {
+            const customFields = typeof contactData.custom_fields === 'string' ? JSON.parse(contactData.custom_fields) : contactData.custom_fields;
+            
+            // Try exact match first
+            if (customFields[fieldName] !== undefined && customFields[fieldName] !== null && customFields[fieldName] !== '') {
+                console.log(`✅ Found in custom fields: ${fieldName} = "${customFields[fieldName]}"`);
+                return customFields[fieldName];
+            }
+            
+            // TEMPORARY: For legacy events, try uppercase version
+            const uppercaseField = fieldName.toUpperCase();
+            if (customFields[uppercaseField] !== undefined && customFields[uppercaseField] !== null && customFields[uppercaseField] !== '') {
+                console.log(`✅ Found legacy uppercase field: ${fieldName} -> ${uppercaseField} = "${customFields[uppercaseField]}"`);
+                return customFields[uppercaseField];
+            }
+        } catch (e) {
+            console.warn('Failed to parse custom fields:', e);
+        }
+    }
+    
+    console.log(`❌ No value found for field: ${fieldName}`);
+    return null;
+};
+
 // Initialize app
 document.addEventListener('DOMContentLoaded', async () => {
     // Make loadTemplates available globally for other modules after functions are defined
@@ -980,7 +1037,7 @@ function displayLabelPreview(preview) {
 }
 
 // Show detailed PDF preview for the current contact
-function showDetailedPreview() {
+async function showDetailedPreview() {
     if (!currentContact || !currentTemplate) {
         showError('No contact or template selected for preview');
         return;
@@ -1019,6 +1076,7 @@ function showDetailedPreview() {
         try {
             const customFields = JSON.parse(currentContact.custom_fields);
             Object.assign(contactData, customFields);
+            console.log('🔍 Merged custom fields into contact data. Sample fields:', Object.keys(customFields).slice(0, 10));
         } catch (e) {
             console.warn('Failed to parse custom fields for detailed preview:', e);
         }
@@ -1026,8 +1084,37 @@ function showDetailedPreview() {
     
     console.log('Final Contact Data for PDF:', contactData);
     
-    // Generate PDF preview
-    const pdfBlob = generatePdf(currentTemplate, contactData);
+    // Generate PDF preview - check if it's a Visual Designer template
+    let pdfBlob;
+    
+    if (currentTemplate.category === 'Visual Designer' || 
+        (currentTemplate.config && currentTemplate.config.designer === 'Visual Designer')) {
+        console.log('Using Visual Designer PDF generation');
+        
+        // Use Visual Designer's PDF generation
+        let pdfDoc;
+        if (window.visualDesigner && window.visualDesigner.backgroundImage) {
+            // Use existing Visual Designer instance if it has the template loaded
+            pdfDoc = await window.visualDesigner.generatePDF(contactData);
+        } else {
+            // Generate PDF directly from template data without full Visual Designer instance
+            pdfDoc = await generateVisualDesignerPDF(currentTemplate, contactData);
+        }
+        
+        // Convert PDF document to blob
+        if (pdfDoc) {
+            pdfBlob = pdfDoc.output('blob');
+        }
+    } else {
+        console.log('Using legacy PDF generation');
+        // Use legacy PDF generation for older templates
+        pdfBlob = generatePdf(currentTemplate, contactData);
+    }
+    
+    if (!pdfBlob) {
+        showError('Failed to generate PDF preview');
+        return;
+    }
     
     // Show PDF preview modal
     const modal = new bootstrap.Modal(document.getElementById('pdfPreviewModal'));
@@ -1103,8 +1190,30 @@ async function printCredential() {
                 email: mergedContactData.email
             });
         } else {
-            // Use traditional template system
-            pdfBlob = generatePdf(currentTemplate, mergedContactData);
+            // Check if it's a Visual Designer template
+            if (currentTemplate.category === 'Visual Designer' || 
+                (currentTemplate.config && currentTemplate.config.designer === 'Visual Designer')) {
+                console.log('Using Visual Designer PDF generation for printing');
+                
+                // Use Visual Designer's PDF generation
+                let pdfDoc;
+                if (window.visualDesigner && window.visualDesigner.backgroundImage) {
+                    // Use existing Visual Designer instance if it has the template loaded
+                    pdfDoc = await window.visualDesigner.generatePDF(mergedContactData);
+                } else {
+                    // Generate PDF directly from template data without full Visual Designer instance
+                    pdfDoc = await generateVisualDesignerPDF(currentTemplate, mergedContactData);
+                }
+                
+                // Convert PDF document to blob
+                if (pdfDoc) {
+                    pdfBlob = pdfDoc.output('blob');
+                }
+            } else {
+                console.log('Using legacy PDF generation for printing');
+                // Use traditional template system for legacy templates
+                pdfBlob = generatePdf(currentTemplate, mergedContactData);
+            }
         }
         
         if (!pdfBlob) {
@@ -1379,6 +1488,29 @@ async function createEvent() {
     }
 }
 
+// Refresh available fields in all components after CSV import
+async function refreshAvailableFields() {
+    console.log('🔄 Refreshing available fields after CSV import...');
+    
+    // Refresh Visual Designer fields if instance exists
+    if (window.visualDesigner) {
+        console.log('📝 Refreshing Visual Designer fields...');
+        await window.visualDesigner.loadAvailableFields();
+        window.visualDesigner.updateFieldSelector();
+    }
+    
+    // Refresh Modern Label Designer fields if instance exists
+    if (window.modernLabelDesigner) {
+        console.log('🎨 Refreshing Modern Label Designer fields...');
+        await window.modernLabelDesigner.loadAvailableFields();
+    }
+    
+    // Notify user that fields have been updated
+    showSuccess('Available fields updated with new CSV data!');
+    
+    console.log('✅ Field refresh complete');
+}
+
 // Import CSV
 async function importCSV(eventId, file) {
     const formData = new FormData();
@@ -1394,6 +1526,9 @@ async function importCSV(eventId, file) {
         
         if (response.ok) {
             showSuccess(`CSV imported successfully! ${result.contactCount} contacts loaded.`);
+            
+            // Refresh available fields in all components that use them
+            await refreshAvailableFields();
         } else {
             throw new Error(result.error || 'CSV import failed.');
         }
@@ -3328,6 +3463,124 @@ function generatePdfPreview() {
     } catch (error) {
         console.error('Failed to generate PDF preview:', error);
         previewContent.innerHTML = '<p class="text-danger">Failed to generate PDF preview</p>';
+    }
+}
+
+// Generate PDF from Visual Designer template without requiring a full instance
+async function generateVisualDesignerPDF(template, contactData) {
+    try {
+        console.log('🔄 Generating PDF from Visual Designer template');
+        console.log('Template:', template);
+        console.log('Template config dimensions:', {
+            width: template.config.width,
+            height: template.config.height,
+            elements: template.config.elements.length
+        });
+        console.log('Contact Data:', contactData);
+        
+        const { jsPDF } = window.jspdf;
+        const pdf = new jsPDF({
+            orientation: 'portrait',
+            unit: 'pt',
+            format: [288, 432] // 4x6 inches in points
+        });
+        
+        // Add background image if present
+        const backgroundElement = template.config.elements.find(el => el.type === 'background-image');
+        if (backgroundElement && backgroundElement.content) {
+            try {
+                console.log('🖼️ Adding background image from template');
+                pdf.addImage(backgroundElement.content, 'JPEG', 0, 0, 288, 432);
+            } catch (e) {
+                console.warn('Failed to add background image to PDF:', e);
+            }
+        }
+        
+        // Add text fields
+        const textElements = template.config.elements.filter(el => el.type === 'text');
+        console.log('📝 Processing', textElements.length, 'text elements');
+        
+        textElements.forEach(element => {
+            try {
+                let text;
+                if (element.fieldType === 'customText') {
+                    text = element.content || 'Custom Text';
+                } else {
+                    // For data fields, extract field name from content like {{field_name}}
+                    let fieldType = element.fieldType;
+                    
+                    // If no fieldType, extract from content
+                    if (!fieldType && element.content) {
+                        const match = element.content.match(/\{\{(\w+)\}\}/);
+                        fieldType = match ? match[1] : element.type;
+                    }
+                    
+                    // Fallback to element type if nothing else works
+                    if (!fieldType) {
+                        fieldType = element.type;
+                    }
+                    
+                                    console.log(`🔍 Looking for field: "${fieldType}" (extracted from: "${element.content}") in contact data`);
+                console.log('Available contact data keys:', Object.keys(contactData));
+                console.log('First 10 keys with values:', Object.keys(contactData).slice(0, 10).map(key => `${key}: "${contactData[key]}"`));
+                    
+                    // Use unified field mapping function
+                    const fieldValue = window.mapFieldValue ? window.mapFieldValue(fieldType, contactData) : null;
+                    
+                    text = fieldValue || `[${fieldType}]`;
+                    if (!fieldValue) {
+                        console.log(`❌ No value found for field: ${fieldType}`);
+                    }
+                }
+                
+                console.log(`📄 Adding text: "${text}" at (${element.x}, ${element.y})`);
+                
+                // Set font properties
+                pdf.setFont(element.fontFamily?.toLowerCase() || 'arial');
+                if (element.bold) {
+                    pdf.setFont(element.fontFamily?.toLowerCase() || 'arial', 'bold');
+                }
+                pdf.setFontSize(element.fontSize || 12);
+                
+                // Calculate position (scale from canvas to PDF - match Visual Designer exactly)
+                // Always use the standard 576x864 canvas dimensions that Visual Designer uses
+                const actualCanvasWidth = 576;
+                const actualCanvasHeight = 864;
+                
+                const scaleX = 288 / actualCanvasWidth;
+                const scaleY = 432 / actualCanvasHeight;
+                
+                console.log(`📐 Using standard Visual Designer canvas dimensions: ${actualCanvasWidth}x${actualCanvasHeight}`);
+                const x = element.x * scaleX;
+                const y = element.y * scaleY;
+                
+                console.log(`📍 Position calc: standard canvas(${actualCanvasWidth}x${actualCanvasHeight}) -> PDF(288x432)`);
+                console.log(`📍 Scale: ${scaleX.toFixed(3)}x, ${scaleY.toFixed(3)}y`);
+                console.log(`📍 Element at (${element.x}, ${element.y}) -> PDF (${x.toFixed(1)}, ${y.toFixed(1)})`);
+                
+                // Apply text alignment
+                let align = 'left';
+                if (element.textAlign === 'center') align = 'center';
+                else if (element.textAlign === 'right') align = 'right';
+                
+                // Add text to PDF (match Visual Designer positioning exactly)
+                const finalY = y + (element.fontSize || 12);
+                pdf.text(text, x, finalY, { align: align });
+                
+                console.log(`📄 Final text position: (${x.toFixed(1)}, ${finalY.toFixed(1)})`);
+                console.log(`✅ Field "${fieldType}" successfully added to PDF with text: "${text}"`);
+                
+            } catch (e) {
+                console.warn('Failed to add text element to PDF:', element, e);
+            }
+        });
+        
+        console.log('✅ Visual Designer PDF generated successfully');
+        return pdf;
+        
+    } catch (error) {
+        console.error('❌ Error generating Visual Designer PDF:', error);
+        return null;
     }
 }
 
