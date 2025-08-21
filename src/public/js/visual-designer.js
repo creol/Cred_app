@@ -30,12 +30,26 @@ class VisualDesigner {
         this.selectedField = null;
         this.selectedFields = [];
         this.backgroundImage = null;
+        this.originalBackgroundImage = null; // Clean background for PDF generation
         this.isDragging = false;
         
-        // Clear template name input
+        // Clear template name input and set up validation
         const templateNameInput = document.getElementById('templateNameInput');
         if (templateNameInput) {
             templateNameInput.value = '';
+            
+            // Add real-time validation
+            templateNameInput.addEventListener('input', () => {
+                clearTimeout(this.validationTimeout);
+                this.validationTimeout = setTimeout(() => {
+                    this.validateTemplateNameInput();
+                }, 500); // Debounce for 500ms
+            });
+            
+            templateNameInput.addEventListener('blur', () => {
+                clearTimeout(this.validationTimeout);
+                this.validateTemplateNameInput();
+            });
         }
         
         // Hide field properties panel
@@ -48,6 +62,189 @@ class VisualDesigner {
         this.draw();
         
         console.log('Visual Designer state reset complete');
+    }
+    
+    async loadTemplate(template) {
+        console.log('🔄 Loading template into Visual Designer:', template);
+        console.log('🔍 Template config structure:', template.config);
+        
+        try {
+            // Reset the designer first
+            this.resetDesigner();
+            
+            // Set template name
+            const templateNameInput = document.getElementById('templateNameInput');
+            if (templateNameInput && template.name) {
+                templateNameInput.value = template.name;
+                console.log('📝 Set template name:', template.name);
+            }
+            
+            // Parse template config
+            const config = template.config;
+            if (!config) {
+                console.warn('⚠️ Template has no config to load');
+                return;
+            }
+            
+            // Handle different template formats
+            let elements = [];
+            
+            if (config.elements && Array.isArray(config.elements)) {
+                // New Visual Designer format
+                elements = config.elements;
+                console.log('📋 Loading Visual Designer format with', elements.length, 'elements');
+            } else if (Array.isArray(config)) {
+                // Legacy format where config is directly an array of elements
+                elements = config;
+                console.log('📋 Loading legacy array format with', elements.length, 'elements');
+            } else {
+                // Legacy object format - extract text elements
+                console.log('📋 Attempting to parse legacy object format');
+                console.log('📋 Config keys:', Object.keys(config));
+                
+                // Look for common legacy properties
+                if (config.textElements) {
+                    elements = config.textElements;
+                    console.log('📋 Found textElements:', elements.length);
+                } else {
+                    // Try to extract any text-like elements
+                    elements = Object.values(config).filter(item => 
+                        item && typeof item === 'object' && 
+                        (item.type === 'text' || item.content || item.label)
+                    );
+                    console.log('📋 Extracted text-like elements:', elements.length);
+                }
+            }
+            
+            if (elements.length === 0) {
+                console.warn('⚠️ No elements found to load');
+                alert('This template appears to be empty or in an incompatible format.');
+                return;
+            }
+            
+            // Load background image if present
+            const backgroundElement = elements.find(el => el.type === 'background-image');
+            if (backgroundElement && backgroundElement.content) {
+                console.log('🖼️ Loading background image...');
+                await this.loadBackgroundFromDataURL(backgroundElement.content);
+            }
+            
+            // Load text fields - filter and deduplicate
+            const textElements = elements.filter(el => 
+                // Explicitly exclude background images
+                el.type !== 'background-image' && 
+                (
+                    el.type === 'text' || 
+                    (el.content && !el.content.startsWith('data:image/')) || 
+                    el.label ||
+                    (!el.type && (el.x !== undefined || el.y !== undefined))
+                )
+            );
+            
+            console.log('📝 Processing', textElements.length, 'text elements');
+            
+            // Deduplicate fields based on position and content
+            const uniqueFields = new Map();
+            
+            textElements.forEach((element, index) => {
+                const x = element.x || 100;
+                const y = element.y || 100;
+                const content = element.content || element.label || element.text || `Field ${index + 1}`;
+                
+                // Create unique key based on position and content
+                const key = `${x}-${y}-${content}`;
+                
+                if (!uniqueFields.has(key)) {
+                    const field = {
+                        id: Date.now() + index,
+                        type: element.fieldType || this.extractFieldType(content),  // Use stored fieldType if available
+                        content: content,
+                        label: content,
+                        x: x,
+                        y: y,
+                        width: element.width || 100,
+                        height: element.height || 20,
+                        fontSize: element.fontSize || element.font_size || 12,
+                        fontFamily: element.fontFamily || element.font_family || 'Arial',
+                        bold: element.bold || element.is_bold || false,
+                        rotation: element.rotation || 0,
+                        textAlign: element.textAlign || element.align || 'left'
+                    };
+                    
+                    uniqueFields.set(key, field);
+                    console.log('📝 Added unique field:', field);
+                } else {
+                    console.log('🚫 Skipping duplicate field at', x, y, 'with content:', content);
+                }
+            });
+            
+            // Add unique fields to the designer
+            this.fields = Array.from(uniqueFields.values());
+            console.log('✅ Loaded', this.fields.length, 'unique fields');
+            console.log('✅ Fields stored in this.fields:', this.fields.map(f => ({ id: f.id, content: f.content, x: f.x, y: f.y })));
+            
+            // Redraw canvas with loaded content
+            this.draw();
+            
+            console.log('✅ Template loaded successfully');
+            
+        } catch (error) {
+            console.error('❌ Failed to load template:', error);
+            console.error('❌ Error stack:', error.stack);
+            alert('Failed to load template: ' + error.message);
+        }
+    }
+    
+    extractFieldType(content) {
+        // Extract field type from content like "{{firstName}}" -> "firstName"
+        const match = content.match(/\{\{(\w+)\}\}/);
+        return match ? match[1] : 'customText';
+    }
+    
+    getFieldDisplayName(fieldType) {
+        // Convert field types to user-friendly display names for the canvas
+        const displayNames = {
+            'firstName': 'First Name',
+            'lastName': 'Last Name', 
+            'middleName': 'Middle Name',
+            'title': 'Title',
+            'precinct': 'Precinct',
+            'caucus': 'Caucus',
+            'eventName': 'Event Name',
+            'eventDate': 'Event Date',
+            'address': 'Address',
+            'city': 'City',
+            'state': 'State',
+            'zip': 'ZIP Code',
+            'phone': 'Phone',
+            'email': 'Email',
+            'birthDate': 'Birth Date'
+        };
+        
+        return displayNames[fieldType] || fieldType || 'Field';
+    }
+    
+    async loadBackgroundFromDataURL(dataURL) {
+        return new Promise((resolve, reject) => {
+            const img = new Image();
+            img.onload = () => {
+                this.backgroundImage = img;
+                // CRITICAL: Also store as original for clean PDF generation
+                this.originalBackgroundImage = img;
+                console.log('🖼️ Background image loaded successfully:', img.width, 'x', img.height);
+                console.log('✅ Original background stored for clean PDF generation');
+                
+                // Fit canvas to background image
+                this.fitCanvasToBackground();
+                
+                resolve();
+            };
+            img.onerror = (error) => {
+                console.error('❌ Failed to load background image:', error);
+                reject(error);
+            };
+            img.src = dataURL;
+        });
     }
     
     init() {
@@ -229,11 +426,16 @@ class VisualDesigner {
             });
         }
         
-        const testPrintBtn = document.getElementById('testPrintBtn');
+        const testPrintBtn = document.getElementById('visualTestPrintBtn');
+        console.log('🖨️ visualTestPrintBtn element:', testPrintBtn);
         if (testPrintBtn) {
+            console.log('🖨️ Adding click listener to visualTestPrintBtn');
             testPrintBtn.addEventListener('click', () => {
+                console.log('🖨️ visualTestPrintBtn clicked!');
                 this.testPrint();
             });
+        } else {
+            console.warn('🖨️ visualTestPrintBtn element not found!');
         }
 
         // Text alignment controls
@@ -376,6 +578,9 @@ class VisualDesigner {
         img.onload = () => {
             console.log('Image loaded successfully:', img.width, img.height);
             this.backgroundImage = img;
+            // CRITICAL: Store the original clean background image for PDF generation
+            this.originalBackgroundImage = img;
+            console.log('✅ Original background image stored for clean PDF generation');
             this.fitCanvasToBackground();
             this.draw();
         };
@@ -730,14 +935,23 @@ class VisualDesigner {
     }
     
     getFieldAt(x, y) {
+        console.log('🔍 Checking fields at position:', x, y);
+        console.log('🔍 Total fields to check:', this.fields.length);
+        
         // Check fields in reverse order (top to bottom)
         for (let i = this.fields.length - 1; i >= 0; i--) {
             const field = this.fields[i];
-            if (x >= field.x && x <= field.x + field.width &&
-                y >= field.y && y <= field.y + field.height) {
+            const inBounds = x >= field.x && x <= field.x + field.width &&
+                           y >= field.y && y <= field.y + field.height;
+            
+            console.log(`🔍 Field ${i}: (${field.x},${field.y}) ${field.width}x${field.height} - ${inBounds ? '✅ HIT' : '❌ miss'}`);
+            
+            if (inBounds) {
+                console.log('✅ Found field:', field);
                 return field;
             }
         }
+        console.log('❌ No field found at position');
         return null;
     }
     
@@ -814,7 +1028,8 @@ class VisualDesigner {
     }
     
     draw() {
-        console.log('draw() called, fields:', this.fields.length, 'background:', !!this.backgroundImage);
+        console.log('🎨 draw() called, fields:', this.fields.length, 'background:', !!this.backgroundImage);
+        console.log('🎨 Fields details:', this.fields.map(f => ({ id: f.id, content: f.content, x: f.x, y: f.y })));
         // Clear canvas
         this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
         
@@ -899,8 +1114,14 @@ class VisualDesigner {
         this.ctx.font = `${field.bold ? 'bold ' : ''}${field.fontSize}px ${field.fontFamily}`;
         this.ctx.textBaseline = 'middle';
         
-        // Use the stored content or fall back to placeholder format
-        const text = field.content || `{{${field.type}}}`;
+        // For display in the designer, show user-friendly labels instead of template syntax
+        let text;
+        if (field.type === 'customText') {
+            text = field.content || 'Custom Text';
+        } else {
+            // Show a user-friendly label instead of {{template}} syntax
+            text = this.getFieldDisplayName(field.type);
+        }
         const textY = field.y + field.height / 2;
         let textX = field.x + 5;
         
@@ -931,6 +1152,64 @@ class VisualDesigner {
         this.ctx.restore();
     }
     
+    async checkTemplateNameExists(templateName) {
+        try {
+            const response = await fetch('/api/templates');
+            if (!response.ok) {
+                console.error('Failed to fetch templates for name validation');
+                return false;
+            }
+            
+            const templates = await response.json();
+            const existingNames = templates.map(t => t.name.toLowerCase().trim());
+            const nameToCheck = templateName.toLowerCase().trim();
+            
+            return existingNames.includes(nameToCheck);
+        } catch (error) {
+            console.error('Error checking template name:', error);
+            return false; // Allow save if we can't check (better than blocking)
+        }
+    }
+
+    async validateTemplateNameInput() {
+        const templateNameInput = document.getElementById('templateNameInput');
+        if (!templateNameInput) return;
+
+        const templateName = templateNameInput.value.trim();
+        
+        // Remove any existing validation styling
+        templateNameInput.classList.remove('is-invalid', 'is-valid');
+        
+        // Find or create feedback element
+        let feedback = templateNameInput.parentNode.querySelector('.invalid-feedback');
+        if (!feedback) {
+            feedback = document.createElement('div');
+            feedback.className = 'invalid-feedback';
+            templateNameInput.parentNode.appendChild(feedback);
+        }
+        
+        if (templateName.length === 0) {
+            feedback.textContent = '';
+            return;
+        }
+        
+        if (templateName.length < 2) {
+            templateNameInput.classList.add('is-invalid');
+            feedback.textContent = 'Template name must be at least 2 characters long.';
+            return;
+        }
+        
+        // Check for duplicate names
+        const nameExists = await this.checkTemplateNameExists(templateName);
+        if (nameExists) {
+            templateNameInput.classList.add('is-invalid');
+            feedback.textContent = `Template name "${templateName}" already exists.`;
+        } else {
+            templateNameInput.classList.add('is-valid');
+            feedback.textContent = '';
+        }
+    }
+
     async saveTemplate() {
         console.log('🔄 saveTemplate() called - START');
         console.log('🔄 Call stack:', new Error().stack);
@@ -946,6 +1225,17 @@ class VisualDesigner {
             alert('Please enter a template name.');
             return;
         }
+        
+        // Check if template name already exists
+        console.log('🔍 Checking if template name exists...');
+        const nameExists = await this.checkTemplateNameExists(templateName);
+        if (nameExists) {
+            alert(`Template name "${templateName}" already exists. Please choose a different name.`);
+            templateNameInput.focus();
+            templateNameInput.select();
+            return;
+        }
+        console.log('✅ Template name is unique');
         
         console.log('📊 Current fields count:', this.fields.length);
         console.log('📊 Current fields:', this.fields);
@@ -963,10 +1253,13 @@ class VisualDesigner {
             const templateConfig = {
                 width: this.canvas.width,
                 height: this.canvas.height,
+                designer: 'Visual Designer',
+                version: '1.0',
                 elements: this.fields.map(field => {
                     const element = {
                         type: 'text',
-                        content: field.content || `{{${field.type}}}`,
+                        fieldType: field.type,  // Store the field type separately
+                        content: field.type === 'customText' ? field.content : `{{${field.type}}}`,
                         x: field.x,
                         y: field.y,
                         width: field.width,
@@ -986,17 +1279,38 @@ class VisualDesigner {
             console.log('🎨 Background image present:', !!this.backgroundImage);
             
             // Add background image as an element if present
-            if (this.backgroundImage) {
+            if (this.originalBackgroundImage) {
+                // CRITICAL FIX: Store the original clean background, NOT the canvas with overlays
+                const tempCanvas = document.createElement('canvas');
+                tempCanvas.width = this.canvas.width;
+                tempCanvas.height = this.canvas.height;
+                const tempCtx = tempCanvas.getContext('2d');
+                
+                // Draw only the clean original background
+                tempCtx.drawImage(this.originalBackgroundImage, 0, 0, tempCanvas.width, tempCanvas.height);
+                
                 const bgElement = {
                     type: 'background-image',
-                    content: this.canvas.toDataURL(),
+                    content: tempCanvas.toDataURL(), // Clean background only
                     x: 0,
                     y: 0,
                     width: this.canvas.width,
                     height: this.canvas.height
                 };
                 templateConfig.elements.unshift(bgElement);
-                console.log('🖼️ Added background element:', bgElement);
+                console.log('🖼️ Added CLEAN background element (no field overlays)');
+            } else if (this.backgroundImage) {
+                console.log('⚠️ Warning: No original background available, using current backgroundImage');
+                const bgElement = {
+                    type: 'background-image',
+                    content: this.backgroundImage.src,
+                    x: 0,
+                    y: 0,
+                    width: this.canvas.width,
+                    height: this.canvas.height
+                };
+                templateConfig.elements.unshift(bgElement);
+                console.log('🖼️ Added background element from backgroundImage.src');
             }
             
             const template = {
@@ -1070,6 +1384,15 @@ class VisualDesigner {
                 try {
                     const errorJson = JSON.parse(errorText);
                     console.error('❌ Parsed error:', errorJson);
+                    
+                    // Handle duplicate name error specifically
+                    if (errorJson.error && errorJson.error.includes('already exists')) {
+                        alert(errorJson.error);
+                        templateNameInput.focus();
+                        templateNameInput.select();
+                        return;
+                    }
+                    
                     alert(`Failed to save template: ${errorJson.error}\n${errorJson.details ? JSON.stringify(errorJson.details) : ''}`);
                 } catch (e) {
                     console.error('❌ Failed to parse error response:', e);
@@ -1245,25 +1568,82 @@ class VisualDesigner {
                 format: [288, 432] // 4x6 inches in points
             });
             
-            // Add background image if present
+            // Add background image if present (completely clean - no text, no overlays)
             if (this.backgroundImage) {
                 try {
-                    const imgData = this.canvas.toDataURL('image/jpeg', 0.8);
-                    pdf.addImage(imgData, 'JPEG', 0, 0, 288, 432);
+                    console.log('🖼️ Adding background image to PDF (clean, no text)');
+                    console.log('🖼️ backgroundImage type:', typeof this.backgroundImage);
+                    console.log('🖼️ backgroundImage constructor:', this.backgroundImage.constructor.name);
+                    console.log('🖼️ backgroundImage src:', this.backgroundImage.src ? this.backgroundImage.src.substring(0, 50) + '...' : 'No src');
+                    console.log('🔍 originalBackgroundImage exists:', !!this.originalBackgroundImage);
+                    console.log('🔍 originalBackgroundImage type:', typeof this.originalBackgroundImage);
+                    if (this.originalBackgroundImage) {
+                        console.log('🔍 originalBackgroundImage constructor:', this.originalBackgroundImage.constructor.name);
+                        console.log('🔍 originalBackgroundImage src:', this.originalBackgroundImage.src ? this.originalBackgroundImage.src.substring(0, 50) + '...' : 'No src');
+                    }
+                    
+                    // CRITICAL FIX: Use only the original clean background image
+                    if (this.originalBackgroundImage) {
+                        console.log('🖼️ Using ORIGINAL background image (guaranteed clean)');
+                        
+                        // Create a temporary canvas with ONLY the original background image
+                        const tempCanvas = document.createElement('canvas');
+                        tempCanvas.width = this.canvas.width;
+                        tempCanvas.height = this.canvas.height;
+                        const tempCtx = tempCanvas.getContext('2d');
+                        
+                        // Clear the canvas first (ensure it's completely clean)
+                        tempCtx.clearRect(0, 0, tempCanvas.width, tempCanvas.height);
+                        
+                        // Draw ONLY the original background image - no text, no fields, no overlays
+                        tempCtx.drawImage(this.originalBackgroundImage, 0, 0, tempCanvas.width, tempCanvas.height);
+                        
+                        // Convert to image data and add to PDF
+                        const imgData = tempCanvas.toDataURL('image/jpeg', 0.8);
+                        pdf.addImage(imgData, 'JPEG', 0, 0, 288, 432);
+                        
+                        // DEBUG: Log what's in the background image
+                        console.log('🔍 Background image data URL length:', imgData.length);
+                        console.log('🔍 Background image preview:', imgData.substring(0, 100) + '...');
+                        
+                        console.log('✅ Clean background image added to PDF');
+                    } else {
+                        console.log('🚫 SKIPPING background - no clean original image available');
+                        console.log('🚫 This prevents canvas text from appearing in PDF background');
+                        // Continue without background to prevent text contamination
+                    }
                 } catch (e) {
-                    console.warn('Failed to add background image to PDF:', e);
+                    console.warn('❌ Failed to add background image to PDF:', e);
                 }
+            } else {
+                console.log('📝 No background image - PDF will have white background');
             }
             
             // Add text fields
-            this.fields.forEach(field => {
+            console.log('🔍 DEBUG PDF Generation - Fields:', this.fields.length);
+            this.fields.forEach((field, index) => {
+                console.log(`🔍 DEBUG Field ${index}:`, {
+                    type: field.type,
+                    content: field.content,
+                    id: field.id,
+                    x: field.x,
+                    y: field.y
+                });
+                
                 try {
                     // Handle custom text vs field data
                     let text;
                     if (field.type === 'customText') {
+                        // For custom text, use the content directly
                         text = field.content || 'Custom Text';
+                        console.log(`📝 Custom text field: "${text}"`);
                     } else {
+                        // For data fields, use the actual data from the test data object
                         text = data[field.type] || `[${field.type}]`;
+                        console.log(`🔄 Data field ${field.type}:`);
+                        console.log(`   - field.content: "${field.content}"`);
+                        console.log(`   - data[${field.type}]: "${data[field.type]}"`);
+                        console.log(`   - final text: "${text}"`);
                     }
                     
                     // Set font
@@ -1294,7 +1674,9 @@ class VisualDesigner {
                         pdf.translate(-centerX, -centerY);
                     }
                     
+                    console.log(`📄 Adding text to PDF: "${text}" at (${x.toFixed(1)}, ${(y + field.fontSize).toFixed(1)})`);
                     pdf.text(text, x, y + field.fontSize, { align: align });
+                    console.log(`✅ Text added to PDF successfully`);
                     
                     if (field.rotation !== 0) {
                         pdf.restore();
@@ -1313,17 +1695,32 @@ class VisualDesigner {
     }
     
     async testPrint() {
+        console.log('🖨️ VISUAL DESIGNER testPrint() called');
+        console.log('🖨️ Fields count:', this.fields.length);
+        console.log('🖨️ Fields array:', this.fields);
+        console.log('🖨️ Call stack:', new Error().stack);
+        
         if (this.fields.length === 0) {
+            console.log('🖨️ No fields - showing alert');
+            console.error('🖨️ ALERT TRIGGERED: No fields available for test print');
+            console.error('🖨️ DEBUG: this.fields =', this.fields);
+            console.error('🖨️ DEBUG: typeof this.fields =', typeof this.fields);
+            console.error('🖨️ DEBUG: Array.isArray(this.fields) =', Array.isArray(this.fields));
             alert('Please add some fields first.');
             return;
         }
         
         try {
+            console.log('🖨️ Starting PDF generation...');
             // Generate test data
             const sampleData = {
                 firstName: 'TEST',
                 lastName: 'PRINT', 
                 middleName: 'USER',
+                // Support both naming conventions
+                first_name: 'TEST',
+                last_name: 'PRINT',
+                middle_name: 'USER',
                 title: 'Test User',
                 precinct: '999',
                 caucus: 'Test Caucus',

@@ -12,6 +12,7 @@ const templatesRoutes = require('./routes/templates');
 const printingRoutes = require('./routes/printing');
 const exportRoutes = require('./routes/exports');
 
+
 // Import database and utilities
 const Database = require('./database/database');
 const Config = require('./utils/config');
@@ -89,6 +90,7 @@ app.get('/api/health', (req, res) => {
 app.use('/api/events', eventRoutes(database, config, logger, upload));
 app.use('/api/contacts', contactsRoutes(database, config, logger));
 app.use('/api/templates', templatesRoutes(database, config, logger));
+
 app.use('/api/printing', printingRoutes(database, config, logger));
 app.use('/api/exports', exportRoutes(database, config, logger));
 

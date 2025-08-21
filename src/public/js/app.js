@@ -112,12 +112,8 @@ function setupEventListeners() {
         saveContactBtn.addEventListener('click', saveContact);
     }
 
-    // Show Template Editor button
-    const showTemplateEditorBtn = document.getElementById('showTemplateEditorBtn');
-    if (showTemplateEditorBtn) {
-        showTemplateEditorBtn.addEventListener('click', showTemplateEditor);
-    }
-
+    // Old designer buttons removed - all template creation now goes through Visual Designer
+    
     // Settings button
     const showSettingsBtn = document.getElementById('showSettingsBtn');
     if (showSettingsBtn) {
@@ -128,17 +124,6 @@ function setupEventListeners() {
     const saveSettingsBtn = document.getElementById('saveSettingsBtn');
     if (saveSettingsBtn) {
         saveSettingsBtn.addEventListener('click', saveSettings);
-    }
-
-    const showLabelDesignerBtn = document.getElementById('showLabelDesignerBtn');
-    if (showLabelDesignerBtn) {
-        showLabelDesignerBtn.addEventListener('click', showLabelDesigner);
-    }
-
-    // Modern Designer button
-    const showModernDesignerBtn = document.getElementById('showModernDesignerBtn');
-    if (showModernDesignerBtn) {
-        showModernDesignerBtn.addEventListener('click', showModernDesigner);
     }
 
     // Visual Designer button
@@ -1539,16 +1524,25 @@ async function loadTemplates() {
                 const isSelected = currentTemplate && currentTemplate.id === template.id;
                 const isEventTemplate = template.event_id;
                 
+                // Check if this is a Visual Designer template
+                // Visual Designer templates have config.elements array with proper structure
+                const isVisualDesignerTemplate = template.config && 
+                    template.config.elements && 
+                    Array.isArray(template.config.elements) &&
+                    template.config.width && 
+                    template.config.height;
+                
                 html += `
                     <div class="template-item ${isSelected ? 'selected' : ''}" data-template-id="${template.id}">
                         <div class="template-info">
                             <h6 class="mb-1">
                                 ${template.name}
                                 ${isEventTemplate ? '<span class="badge bg-info ms-2">Event</span>' : ''}
+                                ${isVisualDesignerTemplate ? '<span class="badge bg-success ms-2">Visual Designer</span>' : '<span class="badge bg-warning ms-2">Legacy</span>'}
                             </h6>
                             <p class="text-muted mb-2">${template.description}</p>
                             <small class="text-muted">
-                                ${isEventTemplate ? 'Event-specific template' : 'General template'}
+                                ${isEventTemplate ? 'Event-specific template' : isVisualDesignerTemplate ? 'Visual Designer template' : 'Legacy template (view only)'}
                             </small>
                         </div>
                         <div class="template-actions">
@@ -1557,7 +1551,7 @@ async function loadTemplates() {
                             </button>
                             ${!isEventTemplate ? `
                                 <button class="btn btn-sm btn-outline-secondary" onclick="editTemplate('${template.id}')">
-                                    Edit
+                                    ${isVisualDesignerTemplate ? 'Edit' : 'View/Create New'}
                                 </button>
                                 <button class="btn btn-sm btn-outline-danger" onclick="deleteTemplate('${template.id}')">
                                     Delete
@@ -1778,32 +1772,60 @@ function showTemplateEditor() {
 
 async function editTemplate(templateId) {
     try {
+        console.log('🎯 editTemplate called for ID:', templateId);
+        
         // Load the specific template
         const response = await fetch(`/api/templates/${templateId}`);
         if (response.ok) {
             const template = await response.json();
-            currentDesignerTemplate = template;
+            console.log('📋 Loaded template for editing:', template);
             
-            // Show the label designer modal
-            const modal = new bootstrap.Modal(document.getElementById('labelDesignerModal'));
+            // Check if this is a Visual Designer template or legacy template
+            // Visual Designer templates have config.elements array with proper structure
+            const isVisualDesignerTemplate = template.config && 
+                template.config.elements && 
+                Array.isArray(template.config.elements) &&
+                template.config.width && 
+                template.config.height;
+            
+            if (!isVisualDesignerTemplate) {
+                // Legacy template - offer to create new one
+                const result = confirm(
+                    `"${template.name}" is a legacy template that cannot be edited.\n\n` +
+                    `Would you like to create a new template using the Visual Designer instead?\n\n` +
+                    `Click OK to create a new template, or Cancel to go back.`
+                );
+                
+                if (result) {
+                    // Open Visual Designer for new template
+                    const modal = new bootstrap.Modal(document.getElementById('visualDesignerModal'));
+                    modal.show();
+                    showSuccess('Visual Designer opened. Create your new template here!');
+                }
+                return;
+            }
+            
+            // Visual Designer template - load it
+            const modal = new bootstrap.Modal(document.getElementById('visualDesignerModal'));
             modal.show();
             
-            // Wait for modal to be shown before setting up
+            // Wait for modal to be shown before loading template
             modal._element.addEventListener('shown.bs.modal', () => {
-                // Render the template
-                renderCanvas();
-                updateTemplateInfo();
+                console.log('🎯 Visual Designer modal shown, loading template...');
                 
-                // Setup canvas event listeners (only once)
-                setupCanvasEventListeners();
+                // Wait for the visual-designer.js to initialize the instance
+                setTimeout(() => {
+                    if (!window.visualDesigner) {
+                        console.log('🎯 Creating Visual Designer instance...');
+                        window.visualDesigner = new VisualDesigner();
+                    }
+                    
+                    // Load the template into Visual Designer
+                    console.log('🎯 Loading template into existing Visual Designer instance');
+                    window.visualDesigner.loadTemplate(template);
+                    showSuccess(`Template "${template.name}" loaded for editing in Visual Designer.`);
+                }, 300); // Longer delay to ensure visual-designer.js runs first
                 
-                // Setup tool buttons (only once)
-                setupToolButtons();
-                
-                // Ensure fold line and half labels are visible
-                ensureFoldLineVisible();
-                
-                showSuccess('Template imported successfully! You can now edit and save it.');
             }, { once: true });
         } else {
             showError('Failed to load template for editing.');

@@ -54,6 +54,23 @@ module.exports = function(database, config, logger) {
         return res.status(400).json({ error: 'Template name and configuration are required' });
       }
 
+      // Check for duplicate template names (only for new templates, not updates)
+      if (!id) {
+        console.log('🔍 Checking for duplicate template name...');
+        const existingTemplates = await database.getAllTemplates();
+        const duplicateName = existingTemplates.find(
+          template => template.name.toLowerCase().trim() === name.toLowerCase().trim()
+        );
+        
+        if (duplicateName) {
+          console.error('❌ Template name already exists:', name);
+          return res.status(400).json({ 
+            error: `Template name "${name}" already exists. Please choose a different name.` 
+          });
+        }
+        console.log('✅ Template name is unique');
+      }
+
       // Validate template configuration
       console.log('🔍 Validating template configuration...');
       const validationResult = validateTemplateConfig(templateConfig);
