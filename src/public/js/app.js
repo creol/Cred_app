@@ -1140,7 +1140,7 @@ async function showDetailedPreview() {
 
 // Print credential
 async function printCredential() {
-    if (!currentContact || !currentEvent || !currentTemplate) {
+    if (!currentContact || !currentEvent) {
         showError('Missing required data for printing.');
         return;
     }
@@ -1239,41 +1239,28 @@ async function printCredential() {
             return;
         }
         
-        // SumatraPDF auto-print method
-        const pdfUrl = URL.createObjectURL(pdfBlob);
-        
-        // Send PDF to backend for SumatraPDF printing
-        const printFormData = new FormData();
-        printFormData.append('pdf', pdfBlob, 'credential.pdf');
-        printFormData.append('printer', 'RX106HD');
-        
+        // New: Use merged/fallback PDFs via backend
         try {
-                            const response = await fetch('/api/printing/print-sumatra', {
+            const response = await fetch('/api/printing/print-merged', {
                 method: 'POST',
-                body: printFormData
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ contactId: currentContact.id, eventId: currentEvent.id, printer: 'RX106HD' })
             });
-            
-            if (response.ok) {
-                const result = await response.json();
-                if (result.success) {
-                    console.log('SumatraPDF print successful');
-                    showSuccess('Credential printed successfully via SumatraPDF!');
-                } else {
-                    throw new Error(result.error || 'SumatraPDF print failed');
-                }
-            } else {
-                throw new Error('Failed to send PDF to backend');
+            const result = await response.json();
+            if (!response.ok || !result.success) {
+                throw new Error(result.error || 'Printing failed');
             }
         } catch (error) {
-            console.error('SumatraPDF print error:', error);
-            showError('SumatraPDF printing failed. Please check if SumatraPDF is installed and RX106HD printer is configured.');
+            console.error('Merged print error:', error);
+            showError(error.message || 'Printing failed');
+            return;
         }
         
         // Mark as credentialed in the database
         await markContactAsCredentialed();
         
         // Show success message
-        showSuccess('Credential printed successfully!');
+        showSuccess('Credential sent to printer!');
         
     } catch (error) {
         console.error('Printing failed:', error);

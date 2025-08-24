@@ -32,6 +32,94 @@ const upload = multer({
 module.exports = function(database, config, logger) {
   const router = express.Router();
 
+  // Print from event PDFs (merged/fallback) using SumatraPDF page-range
+  router.post('/print-merged', async (req, res) => {
+    try {
+      const { contactId, eventId, printer } = req.body || {};
+      if (!contactId || !eventId) {
+        return res.status(400).json({ success: false, error: 'contactId and eventId are required' });
+      }
+
+      const contact = await database.getContact(contactId);
+      if (!contact) return res.status(404).json({ success: false, error: 'Contact not found' });
+
+      const event = await database.getEvent(eventId);
+      if (!event) return res.status(404).json({ success: false, error: 'Event not found' });
+
+      const printerName = printer || 'RX106HD';
+
+      const useMerged = contact.original_row && contact.original_row > 0 && event.merged_pdf_path;
+      const pdfPath = useMerged ? event.merged_pdf_path : event.fallback_pdf_path;
+      if (!pdfPath) {
+        return res.status(400).json({ success: false, error: useMerged ? 'Merged PDF not configured' : 'Fallback PDF not configured' });
+      }
+
+      if (!fs.existsSync(pdfPath)) {
+        return res.status(400).json({ success: false, error: `PDF not found at path: ${pdfPath}` });
+      }
+
+      // Locate SumatraPDF
+      const possiblePaths = [
+        `C:\\Users\\User\\AppData\\Local\\SumatraPDF\\SumatraPDF.exe`,
+        `C:\\Users\\${process.env.USERNAME || 'User'}\\AppData\\Local\\SumatraPDF\\SumatraPDF.exe`,
+        `C:\\Program Files\\SumatraPDF\\SumatraPDF.exe`,
+        `C:\\Program Files (x86)\\SumatraPDF\\SumatraPDF.exe`
+      ];
+
+      let sumatraPathUnquoted = null;
+      let sumatraPath = null;
+      for (const p of possiblePaths) {
+        try {
+          if (fs.existsSync(p)) { sumatraPathUnquoted = p; sumatraPath = `"${p}"`; break; }
+        } catch (_) { }
+      }
+      if (!sumatraPathUnquoted) {
+        return res.status(500).json({ success: false, error: `SumatraPDF not found. Expected at: ${possiblePaths.join(', ')}` });
+      }
+
+      // Build print command with optional page selection for merged PDF
+      const pageSetting = useMerged ? `, pages=${contact.original_row}` : '';
+      const cmd = `${sumatraPath} -print-to "${printerName}" -print-settings "fit${pageSetting}" "${pdfPath}"`;
+      logger.info('Executing SumatraPDF merged print', { cmd, pdfPath, printerName, useMerged, page: contact.original_row || 1 });
+
+      exec(cmd, async (error, stdout, stderr) => {
+        logger.info('Sumatra stdout/stderr', { stdout, stderr });
+        if (error) {
+          logger.error('Sumatra merged print error', { error: error.message });
+          return res.status(500).json({ success: false, error: `SumatraPDF print failed: ${error.message}` });
+        }
+
+        // Create credential record (use default-template as placeholder)
+        try {
+          const cred = await database.createCredential({
+            contact_id: contactId,
+            event_id: eventId,
+            template_id: 'default-template',
+            printed_at: moment().toISOString(),
+            printed_by: 'system',
+            status: 'active',
+            notes: useMerged ? `Merged PDF page ${contact.original_row}` : 'Fallback PDF printed'
+          });
+
+          await database.logAudit({
+            action: 'credential_printed',
+            entity_type: 'credential',
+            entity_id: cred.id,
+            details: { method: 'sumatra-merged', pdfPath, page: contact.original_row || 1, printer: printerName }
+          });
+        } catch (e) {
+          logger.error('Failed to record credential after merged print', { error: e.message });
+          // continue; printing already done
+        }
+
+        return res.json({ success: true, message: 'Print job sent successfully' });
+      });
+    } catch (error) {
+      logger.error('print-merged endpoint error', { error: error.message });
+      res.status(500).json({ success: false, error: `Server error: ${error.message}` });
+    }
+  });
+
   // Print credential
   router.post('/print-credential', async (req, res) => {
     try {
