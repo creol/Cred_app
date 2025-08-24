@@ -336,6 +336,16 @@
                             <label class="form-label">Import CSV (Optional)</label>
                             <input type="file" class="form-control" id="csvFile" accept=".csv">
                             <small class="text-muted">Upload a CSV file with contact information</small>
+                            <div class="alert alert-info mt-2" role="alert">
+                                <strong>Label Printing Instructions</strong>
+                                <ul class="mb-0 mt-1">
+                                    <li>Create your label layout in Word or LibreOffice Writer using <em>Mail Merge</em>.</li>
+                                    <li>Use this exact CSV for the merge so record order matches the app.</li>
+                                    <li>Include a <code>row_number</code> column in the CSV (1-based) for page mapping.</li>
+                                    <li>Merge to a single PDF (one 4"×6" page per contact) in CSV order.</li>
+                                    <li>Prepare a one-page fallback PDF for new contacts not in the CSV.</li>
+                                </ul>
+                            </div>
                         </div>
                     </form>
                 </div>
