@@ -11,6 +11,7 @@ class VisualDesigner {
         this.ctx = null;
         this.backgroundImage = null;
         this.fields = [];
+        this.currentTemplateId = null; // Track loaded template for updates
         this.selectedField = null;
         this.selectedFields = []; // For multi-selection
         this.dragOffset = { x: 0, y: 0 };
@@ -30,6 +31,10 @@ class VisualDesigner {
         this.pdfOffsetX = 0;
         this.pdfOffsetY = 0;
         
+        // History stacks for undo/redo
+        this.historyStack = [];
+        this.futureStack = [];
+        
         console.log('🎯 VisualDesigner calling init()');
         this.init();
     }
@@ -37,11 +42,14 @@ class VisualDesigner {
     resetDesigner() {
         console.log('Resetting Visual Designer state');
         this.fields = [];
+        this.currentTemplateId = null;
         this.selectedField = null;
         this.selectedFields = [];
         this.backgroundImage = null;
         this.originalBackgroundImage = null; // Clean background for PDF generation
         this.isDragging = false;
+        this.historyStack = [];
+        this.futureStack = [];
         
         // Clear template name input and set up validation
         const templateNameInput = document.getElementById('templateNameInput');
@@ -70,6 +78,7 @@ class VisualDesigner {
         
         // Redraw canvas
         this.draw();
+        this.renderFieldsList();
         
         console.log('Visual Designer state reset complete');
     }
@@ -88,8 +97,13 @@ class VisualDesigner {
                 templateNameInput.value = template.name;
                 console.log('📝 Set template name:', template.name);
             }
+            // Track current template id for updates
+            if (template.id) {
+                this.currentTemplateId = template.id;
+                console.log('🔗 Tracking currentTemplateId for updates:', this.currentTemplateId);
+            }
             
-                    // Parse template config
+            // Parse template config
         const config = template.config;
         if (!config) {
             console.warn('⚠️ Template has no config to load');
@@ -327,10 +341,8 @@ class VisualDesigner {
         
         // Background upload
         const backgroundUpload = document.getElementById('visualBackgroundUpload');
-        console.log('visualBackgroundUpload element:', backgroundUpload);
         if (backgroundUpload) {
             backgroundUpload.addEventListener('change', (e) => {
-                console.log('Background upload triggered');
                 this.handleBackgroundUpload(e);
             });
             console.log('Background upload listener added');
@@ -338,27 +350,31 @@ class VisualDesigner {
             console.error('visualBackgroundUpload element not found');
         }
         
-        // Remove background
-        const removeBackground = document.getElementById('visualRemoveBackground');
-        console.log('visualRemoveBackground element:', removeBackground);
-        if (removeBackground) {
-            removeBackground.addEventListener('click', () => {
-                console.log('Remove background clicked');
-                this.removeBackground();
-            });
-        }
-        
         // Add field button
         const addFieldBtn = document.getElementById('visualAddFieldBtn');
-        console.log('visualAddFieldBtn element:', addFieldBtn);
         if (addFieldBtn) {
             addFieldBtn.addEventListener('click', () => {
-                console.log('Add field clicked');
                 this.addField();
             });
             console.log('Add field listener added');
         } else {
             console.error('addFieldBtn element not found');
+        }
+        
+        // Undo/Redo buttons
+        const undoBtn = document.getElementById('visualUndoBtn');
+        const redoBtn = document.getElementById('visualRedoBtn');
+        if (undoBtn) {
+            undoBtn.addEventListener('click', () => this.undo());
+        }
+        if (redoBtn) {
+            redoBtn.addEventListener('click', () => this.redo());
+        }
+        
+        // Clear template (fields only)
+        const clearTemplateBtn = document.getElementById('clearTemplateBtn');
+        if (clearTemplateBtn) {
+            clearTemplateBtn.addEventListener('click', () => this.clearFieldsOnly());
         }
         
         // Canvas interactions
@@ -771,18 +787,15 @@ class VisualDesigner {
     }
     
     addField() {
-        console.log('addField called');
         const select = document.getElementById('fieldTypeSelect');
         if (!select) {
-            console.error('fieldTypeSelect not found');
+            alert('Field selector not found.');
             return;
         }
         
         const fieldType = select.value;
-        console.log('Selected field type:', fieldType);
-        
         if (!fieldType) {
-            alert('Please select a field type first.');
+            alert('Please select a field type to add.');
             return;
         }
         
@@ -797,7 +810,7 @@ class VisualDesigner {
                 return;
             }
             fieldContent = customText;
-            fieldLabel = 'Custom: ' + customText.substring(0, 20) + (customText.length > 20 ? '...' : '');
+            fieldLabel = 'Custom Text';
         }
         
         // Smart positioning: stack fields with offset to avoid overlapping
@@ -806,11 +819,11 @@ class VisualDesigner {
             Math.abs(f.y - (this.canvas.height / 2 - 10)) < 20
         ).length;
         
-        const offsetX = (existingFieldsAtCenter % 3) * 30; // Horizontal spread
-        const offsetY = Math.floor(existingFieldsAtCenter / 3) * 30; // Vertical stack
+        const offsetX = (existingFieldsAtCenter % 3) * 10;
+        const offsetY = Math.floor(existingFieldsAtCenter / 3) * 10;
         
         const field = {
-            id: Date.now(),
+            id: 'field_' + Date.now() + '_' + Math.floor(Math.random() * 1000),
             type: fieldType,
             content: fieldContent, // Store the actual content
             label: fieldLabel,
@@ -826,13 +839,15 @@ class VisualDesigner {
         };
         
         console.log('Creating field:', field);
+        this.pushHistory();
         this.fields.push(field);
         console.log('Total fields:', this.fields.length);
         this.selectField(field);
         this.draw();
+        this.renderFieldsList();
         
         // Reset select
-        select.value = '';
+        select.selectedIndex = 0;
     }
 
     async loadAvailableFields() {
@@ -1053,15 +1068,19 @@ class VisualDesigner {
     
     updateFieldProperty(property, value) {
         if (this.selectedField) {
+            this.pushHistory();
             this.selectedField[property] = value;
             this.draw();
+            this.renderFieldsList();
         }
     }
     
     rotateSelectedField() {
         if (this.selectedField) {
+            this.pushHistory();
             this.selectedField.rotation = (this.selectedField.rotation + 180) % 360;
             this.draw();
+            this.renderFieldsList();
         }
     }
     
@@ -1069,10 +1088,12 @@ class VisualDesigner {
         if (this.selectedField) {
             const index = this.fields.indexOf(this.selectedField);
             if (index > -1) {
+                this.pushHistory();
                 this.fields.splice(index, 1);
                 this.selectedField = null;
                 this.updatePropertiesPanel();
                 this.draw();
+                this.renderFieldsList();
             }
         }
     }
@@ -1149,7 +1170,7 @@ class VisualDesigner {
             let newX = pos.x - this.dragOffset.x;
             let newY = pos.y - this.dragOffset.y;
             
-            // Apply snap to grid if enabled
+            // Snap to grid if enabled
             if (this.snapToGrid) {
                 newX = Math.round(newX / this.gridSize) * this.gridSize;
                 newY = Math.round(newY / this.gridSize) * this.gridSize;
@@ -1170,10 +1191,11 @@ class VisualDesigner {
             }
             
             this.draw();
+            this.renderFieldsList();
         } else {
             // Update cursor based on hover
             const field = this.getFieldAt(pos.x, pos.y);
-            this.canvas.style.cursor = field ? 'grab' : 'default';
+            this.canvas.style.cursor = field ? 'move' : 'default';
         }
     }
     
@@ -1264,6 +1286,9 @@ class VisualDesigner {
         if (this.isPreviewMode) {
             this.drawPreviewIndicator();
         }
+        
+        // Refresh list
+        this.renderFieldsList();
     }
     
     drawPreviewIndicator() {
@@ -1559,13 +1584,16 @@ class VisualDesigner {
             }
             
             const templates = await response.json();
-            const existingNames = templates.map(t => t.name.toLowerCase().trim());
-            const nameToCheck = templateName.toLowerCase().trim();
-            
-            return existingNames.includes(nameToCheck);
+            return templates.some(t => {
+                const sameName = (t.name || '').toLowerCase().trim() === templateName.toLowerCase().trim();
+                if (!sameName) return false;
+                // If updating, allow same-name on the same template id
+                if (this.currentTemplateId && t.id === this.currentTemplateId) return false;
+                return true;
+            });
         } catch (error) {
             console.error('Error checking template name:', error);
-            return false; // Allow save if we can't check (better than blocking)
+            return false;
         }
     }
 
@@ -1624,16 +1652,20 @@ class VisualDesigner {
             return;
         }
         
-        // Check if template name already exists
-        console.log('🔍 Checking if template name exists...');
-        const nameExists = await this.checkTemplateNameExists(templateName);
-        if (nameExists) {
-            alert(`Template name "${templateName}" already exists. Please choose a different name.`);
-            templateNameInput.focus();
-            templateNameInput.select();
-            return;
+        // If creating new, prevent duplicate names; if updating, allow same-name for same id
+        if (!this.currentTemplateId) {
+            console.log('🔍 Checking if template name exists (new template)...');
+            const nameExists = await this.checkTemplateNameExists(templateName);
+            if (nameExists) {
+                alert(`Template name "${templateName}" already exists. Please choose a different name.`);
+                templateNameInput.focus();
+                templateNameInput.select();
+                return;
+            }
+            console.log('✅ Template name is unique');
+        } else {
+            console.log('✏️ Updating existing template, skipping duplicate-name check for same id');
         }
-        console.log('✅ Template name is unique');
         
         console.log('📊 Current fields count:', this.fields.length);
         console.log('📊 Current fields:', this.fields);
@@ -1719,18 +1751,18 @@ class VisualDesigner {
                 category: 'Visual Designer',
                 description: `Visual template with ${this.fields.length} fields`
             };
+            if (this.currentTemplateId) {
+                template.id = this.currentTemplateId;
+            }
             
             console.log('📋 Complete template object:', template);
             console.log('📋 Template config elements:', templateConfig.elements.length);
             
-            // Save to server using the same API as other templates
+            // Save or update using POST (server updates when id is present)
             console.log('Sending template to server:', JSON.stringify(template, null, 2));
-            
             const response = await fetch('/api/templates', {
                 method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json'
-                },
+                headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(template)
             });
             
@@ -1742,38 +1774,16 @@ class VisualDesigner {
                 console.log('✅ Template saved successfully:', result);
                 console.log('✅ Saved template ID:', result.id);
                 console.log('✅ Saved template name:', result.name);
-                alert(`Template "${templateName}" saved successfully!`);
-                
-                // Reset the designer
-                console.log('🔄 Resetting designer...');
-                this.resetDesigner();
-                
-                // Close modal and refresh templates list
-                const modal = bootstrap.Modal.getInstance(document.getElementById('visualDesignerModal'));
-                if (modal) {
-                    modal.hide();
-                    
-                    // Refresh templates list after modal is hidden
-                    modal._element.addEventListener('hidden.bs.modal', function() {
-                        if (typeof window.loadTemplates === 'function') {
-                            console.log('Refreshing templates list after save...');
-                            window.loadTemplates();
-                        } else if (typeof loadTemplates === 'function') {
-                            console.log('Refreshing templates list after save (global)...');
-                            loadTemplates();
-                        } else {
-                            console.warn('loadTemplates function not available');
-                        }
-                    }, { once: true });
+                // Keep editing if this was an update; otherwise allow continuing
+                this.currentTemplateId = result.id;
+                if (typeof showSuccess === 'function') {
+                    showSuccess(`Template "${templateName}" saved.`);
                 } else {
-                    // Fallback: try to refresh immediately
-                    if (typeof window.loadTemplates === 'function') {
-                        console.log('Immediate refresh - window.loadTemplates...');
-                        window.loadTemplates();
-                    } else if (typeof loadTemplates === 'function') {
-                        console.log('Immediate refresh - loadTemplates...');
-                        loadTemplates();
-                    }
+                    alert(`Template "${templateName}" saved.`);
+                }
+                // Refresh template list in the background
+                if (typeof window.loadTemplates === 'function') {
+                    window.loadTemplates();
                 }
             } else {
                 const errorText = await response.text();
@@ -2362,6 +2372,106 @@ class VisualDesigner {
         
         this.draw();
     }
+
+    // Render the list of fields in the sidebar
+    renderFieldsList() {
+        const list = document.getElementById('fieldsList');
+        if (!list) return;
+        list.innerHTML = '';
+        
+        this.fields.forEach((field) => {
+            const item = document.createElement('button');
+            item.type = 'button';
+            item.className = 'list-group-item list-group-item-action d-flex justify-content-between align-items-center';
+            const label = field.label || field.type || 'Field';
+            item.innerHTML = `<span>${label}</span><small class="text-muted">(${Math.round(field.x)}, ${Math.round(field.y)})</small>`;
+            if (this.selectedField && this.selectedField.id === field.id) {
+                item.classList.add('active');
+            }
+            item.addEventListener('click', () => {
+                this.selectField(field);
+                this.draw();
+            });
+            item.addEventListener('dblclick', () => {
+                this.selectField(field);
+                this.updatePropertiesPanel();
+            });
+            list.appendChild(item);
+        });
+    }
+
+    // History helpers
+    pushHistory() {
+        // Store a deep copy of fields for undo
+        const snapshot = JSON.parse(JSON.stringify(this.fields));
+        this.historyStack.push(snapshot);
+        // Clear the redo stack on new action
+        this.futureStack = [];
+    }
+
+    undo() {
+        if (this.historyStack.length === 0) return;
+        const current = JSON.parse(JSON.stringify(this.fields));
+        this.futureStack.push(current);
+        const prev = this.historyStack.pop();
+        this.fields = prev || [];
+        // Try to keep selection if id still exists
+        if (this.selectedField) {
+            const keep = this.fields.find(f => f.id === this.selectedField.id);
+            this.selectedField = keep || null;
+        }
+        this.updatePropertiesPanel();
+        this.draw();
+    }
+
+    redo() {
+        if (this.futureStack.length === 0) return;
+        const current = JSON.parse(JSON.stringify(this.fields));
+        this.historyStack.push(current);
+        const next = this.futureStack.pop();
+        this.fields = next || [];
+        if (this.selectedField) {
+            const keep = this.fields.find(f => f.id === this.selectedField.id);
+            this.selectedField = keep || null;
+        }
+        this.updatePropertiesPanel();
+        this.draw();
+    }
+
+    clearFieldsOnly() {
+        if (!confirm('Clear all fields from the template? Background will remain.')) return;
+        if (this.fields.length === 0) return;
+        this.pushHistory();
+        this.fields = [];
+        this.selectedField = null;
+        this.updatePropertiesPanel();
+        this.draw();
+    }
+
+    // Start a brand new template with no fields and no background
+    startNewTemplate() {
+        console.log('🆕 Starting a brand new template');
+        // Reset offsets
+        this.pdfOffsetX = 0;
+        this.pdfOffsetY = 0;
+        const pdfOffsetXInput = document.getElementById('pdfOffsetX');
+        const pdfOffsetYInput = document.getElementById('pdfOffsetY');
+        if (pdfOffsetXInput) pdfOffsetXInput.value = 0;
+        if (pdfOffsetYInput) pdfOffsetYInput.value = 0;
+        
+        // Fully reset the designer (clears fields and background)
+        this.resetDesigner();
+        this.currentTemplateId = null;
+        
+        // Clear template name
+        const templateNameInput = document.getElementById('templateNameInput');
+        if (templateNameInput) templateNameInput.value = '';
+        
+        // Ensure lists and properties reflect blank state
+        this.renderFieldsList();
+        this.updatePropertiesPanel();
+        this.draw();
+    }
 }
 
 // Make VisualDesigner available globally for debugging
@@ -2479,9 +2589,17 @@ document.addEventListener('DOMContentLoaded', function() {
                 setTimeout(() => {
                     window.visualDesigner = new VisualDesigner();
                     console.log('🎯 Visual Designer instance created and assigned to window');
+                    if (window.forceNewVisualTemplate) {
+                        window.visualDesigner.startNewTemplate();
+                        window.forceNewVisualTemplate = false;
+                    }
                 }, 100);
             } else {
                 console.log('🎯 Visual Designer instance already exists on window');
+                if (window.forceNewVisualTemplate) {
+                    window.visualDesigner.startNewTemplate();
+                    window.forceNewVisualTemplate = false;
+                }
             }
         });
     } else {

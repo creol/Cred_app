@@ -189,6 +189,8 @@ function setupEventListeners() {
     if (showVisualDesignerBtn) {
         showVisualDesignerBtn.addEventListener('click', () => {
             console.log('🎯 Visual Designer button clicked!');
+            // Ensure a brand-new template opens: set a one-shot flag
+            window.forceNewVisualTemplate = true;
             const modal = new bootstrap.Modal(document.getElementById('visualDesignerModal'));
             
             // The visual designer initialization is handled in visual-designer.js

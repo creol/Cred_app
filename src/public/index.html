@@ -713,6 +713,19 @@
                                     </div>
                                 </div>
 
+                                <h6 class="mt-3"><i class="fas fa-list"></i> Fields on Template</h6>
+                                <div id="fieldsList" class="list-group small mb-3" style="max-height: 220px; overflow-y: auto;"></div>
+
+                                <h6><i class="fas fa-history"></i> History</h6>
+                                <div class="btn-group w-100 mb-3" role="group">
+                                    <button type="button" class="btn btn-outline-secondary btn-sm" id="visualUndoBtn" title="Undo">
+                                        <i class="fas fa-undo"></i> Undo
+                                    </button>
+                                    <button type="button" class="btn btn-outline-secondary btn-sm" id="visualRedoBtn" title="Redo">
+                                        <i class="fas fa-redo"></i> Redo
+                                    </button>
+                                </div>
+
                                 <h6><i class="fas fa-tools"></i> Layout Tools</h6>
                                 <div class="mb-3">
                                     <div class="form-check form-check-sm mb-2">
@@ -773,6 +786,9 @@
                                 <div class="mb-2">
                                     <input type="text" class="form-control form-control-sm" id="templateNameInput" placeholder="Template Name">
                                 </div>
+                                <button class="btn btn-sm btn-outline-danger w-100 mb-2" id="clearTemplateBtn">
+                                    <i class="fas fa-broom"></i> Clear Fields
+                                </button>
                                 <button class="btn btn-sm btn-success w-100 mb-2" id="saveTemplateBtn">
                                     <i class="fas fa-save"></i> Save Template
                                 </button>
