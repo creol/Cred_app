@@ -1453,8 +1453,8 @@ async function createEvent() {
     const date = document.getElementById('modalEventDate').value;
     const description = document.getElementById('modalEventDescription').value.trim();
     const csvFile = document.getElementById('csvFile').files[0];
-    const mergedPdfPath = document.getElementById('mergedPdfPath')?.value.trim() || '';
-    const fallbackPdfPath = document.getElementById('fallbackPdfPath')?.value.trim() || '';
+    const mergedPdfFile = document.getElementById('mergedPdfFile')?.files?.[0] || null;
+    const fallbackPdfFile = document.getElementById('fallbackPdfFile')?.files?.[0] || null;
     
     if (!name || !date) {
         showError('Event name and date are required.');
@@ -1466,7 +1466,7 @@ async function createEvent() {
         const eventResponse = await fetch('/api/events', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ name, date, description, merged_pdf_path: mergedPdfPath, fallback_pdf_path: fallbackPdfPath })
+            body: JSON.stringify({ name, date, description })
         });
         
         if (!eventResponse.ok) {
@@ -1481,6 +1481,24 @@ async function createEvent() {
         // Import CSV if provided
         if (csvFile) {
             await importCSV(event.id, csvFile);
+        }
+
+        // Upload PDFs if provided
+        try {
+            if (mergedPdfFile) {
+                const fd = new FormData();
+                fd.append('mergedPdf', mergedPdfFile);
+                const r = await fetch(`/api/events/${event.id}/upload-merged-pdf`, { method: 'POST', body: fd });
+                if (!r.ok) console.error('Merged PDF upload failed');
+            }
+            if (fallbackPdfFile) {
+                const fd2 = new FormData();
+                fd2.append('fallbackPdf', fallbackPdfFile);
+                const r2 = await fetch(`/api/events/${event.id}/upload-fallback-pdf`, { method: 'POST', body: fd2 });
+                if (!r2.ok) console.error('Fallback PDF upload failed');
+            }
+        } catch (e) {
+            console.error('PDF upload error:', e);
         }
         
         // Update display

@@ -268,6 +268,54 @@ module.exports = function(database, config, logger, upload) {
     }
   });
 
+  // Upload merged PDF (known contacts)
+  router.post('/:eventId/upload-merged-pdf', upload.single('mergedPdf'), async (req, res) => {
+    try {
+      const eventId = req.params.eventId;
+      const event = await database.getEvent(eventId);
+      if (!event) return res.status(404).json({ error: 'Event not found' });
+
+      if (!req.file) return res.status(400).json({ error: 'No PDF file provided' });
+
+      // Persist path on event
+      const updated = await database.updateEvent(eventId, {
+        name: event.name,
+        date: event.date,
+        description: event.description,
+        merged_pdf_path: req.file.path,
+        fallback_pdf_path: event.fallback_pdf_path || ''
+      });
+      res.json({ message: 'Merged PDF uploaded', path: req.file.path, event: updated });
+    } catch (error) {
+      logger.error('Failed to upload merged PDF', { error: error.message });
+      res.status(500).json({ error: 'Failed to upload merged PDF' });
+    }
+  });
+
+  // Upload fallback PDF (new contacts)
+  router.post('/:eventId/upload-fallback-pdf', upload.single('fallbackPdf'), async (req, res) => {
+    try {
+      const eventId = req.params.eventId;
+      const event = await database.getEvent(eventId);
+      if (!event) return res.status(404).json({ error: 'Event not found' });
+
+      if (!req.file) return res.status(400).json({ error: 'No PDF file provided' });
+
+      // Persist path on event
+      const updated = await database.updateEvent(eventId, {
+        name: event.name,
+        date: event.date,
+        description: event.description,
+        merged_pdf_path: event.merged_pdf_path || '',
+        fallback_pdf_path: req.file.path
+      });
+      res.json({ message: 'Fallback PDF uploaded', path: req.file.path, event: updated });
+    } catch (error) {
+      logger.error('Failed to upload fallback PDF', { error: error.message });
+      res.status(500).json({ error: 'Failed to upload fallback PDF' });
+    }
+  });
+
   // Get event statistics
   router.get('/:eventId/statistics', async (req, res) => {
     try {
