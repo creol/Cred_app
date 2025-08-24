@@ -36,7 +36,7 @@ module.exports = function(database, config, logger, upload) {
   // Create new event
   router.post('/', async (req, res) => {
     try {
-      const { name, date, description } = req.body;
+      const { name, date, description, merged_pdf_path, fallback_pdf_path } = req.body;
       
       if (!name || !date) {
         return res.status(400).json({ error: 'Event name and date are required' });
@@ -47,7 +47,7 @@ module.exports = function(database, config, logger, upload) {
         return res.status(400).json({ error: 'Invalid date format. Use ISO 8601 format (YYYY-MM-DD)' });
       }
 
-      const event = await database.createEvent({ name, date, description });
+      const event = await database.createEvent({ name, date, description, merged_pdf_path, fallback_pdf_path });
       
       logger.logEvent('event_created', { eventId: event.id, eventName: event.name });
       
@@ -61,7 +61,7 @@ module.exports = function(database, config, logger, upload) {
   // Update event
   router.put('/:eventId', async (req, res) => {
     try {
-      const { name, date, description, template_id } = req.body;
+      const { name, date, description, template_id, merged_pdf_path, fallback_pdf_path } = req.body;
       
       // If updating basic event info, validate required fields
       if (name !== undefined || date !== undefined) {
@@ -80,6 +80,8 @@ module.exports = function(database, config, logger, upload) {
       if (date !== undefined) updateData.date = date;
       if (description !== undefined) updateData.description = description;
       if (template_id !== undefined) updateData.template_id = template_id;
+      if (merged_pdf_path !== undefined) updateData.merged_pdf_path = merged_pdf_path;
+      if (fallback_pdf_path !== undefined) updateData.fallback_pdf_path = fallback_pdf_path;
 
       const event = await database.updateEvent(req.params.eventId, updateData);
       

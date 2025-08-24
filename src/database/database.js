@@ -37,6 +37,8 @@ class Database {
         name TEXT NOT NULL,
         date TEXT NOT NULL,
         description TEXT,
+        merged_pdf_path TEXT,
+        fallback_pdf_path TEXT,
         status TEXT DEFAULT 'active',
         created_at TEXT NOT NULL,
         updated_at TEXT NOT NULL
@@ -171,6 +173,8 @@ class Database {
       // Check if events table exists and has status column
       const tableInfo = await this.all("PRAGMA table_info(events)");
       const hasStatusColumn = tableInfo.some(col => col.name === 'status');
+      const hasMergedPdfColumn = tableInfo.some(col => col.name === 'merged_pdf_path');
+      const hasFallbackPdfColumn = tableInfo.some(col => col.name === 'fallback_pdf_path');
       
       if (!hasStatusColumn) {
         console.log('🔄 Adding status column to events table...');
@@ -179,6 +183,18 @@ class Database {
         // Set all existing events to 'active' status
         await this.run('UPDATE events SET status = "active" WHERE status IS NULL');
         console.log('✅ Status column added successfully');
+      }
+
+      if (!hasMergedPdfColumn) {
+        console.log('🔄 Adding merged_pdf_path column to events table...');
+        await this.run('ALTER TABLE events ADD COLUMN merged_pdf_path TEXT');
+        console.log('✅ merged_pdf_path column added successfully');
+      }
+
+      if (!hasFallbackPdfColumn) {
+        console.log('🔄 Adding fallback_pdf_path column to events table...');
+        await this.run('ALTER TABLE events ADD COLUMN fallback_pdf_path TEXT');
+        console.log('✅ fallback_pdf_path column added successfully');
       }
 
       // Check if templates table has event_id column
@@ -241,12 +257,20 @@ class Database {
     await this.run('UPDATE events SET status = ? WHERE status = ?', ['ended', 'active']);
     
     const sql = `
-      INSERT INTO events (id, name, date, description, status, created_at, updated_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?)
+      INSERT INTO events (id, name, date, description, merged_pdf_path, fallback_pdf_path, status, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
     `;
     
     await this.run(sql, [
-      id, eventData.name, eventData.date, eventData.description || '', 'active', now, now
+      id,
+      eventData.name,
+      eventData.date,
+      eventData.description || '',
+      eventData.merged_pdf_path || '',
+      eventData.fallback_pdf_path || '',
+      'active',
+      now,
+      now
     ]);
     
     return { id, ...eventData, status: 'active', created_at: now, updated_at: now };
@@ -265,12 +289,18 @@ class Database {
     
     const sql = `
       UPDATE events 
-      SET name = ?, date = ?, description = ?, updated_at = ?
+      SET name = ?, date = ?, description = ?, merged_pdf_path = ?, fallback_pdf_path = ?, updated_at = ?
       WHERE id = ?
     `;
     
     await this.run(sql, [
-      eventData.name, eventData.date, eventData.description || '', now, eventId
+      eventData.name,
+      eventData.date,
+      eventData.description || '',
+      eventData.merged_pdf_path || '',
+      eventData.fallback_pdf_path || '',
+      now,
+      eventId
     ]);
     
     return await this.getEvent(eventId);

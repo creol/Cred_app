@@ -1453,6 +1453,8 @@ async function createEvent() {
     const date = document.getElementById('modalEventDate').value;
     const description = document.getElementById('modalEventDescription').value.trim();
     const csvFile = document.getElementById('csvFile').files[0];
+    const mergedPdfPath = document.getElementById('mergedPdfPath')?.value.trim() || '';
+    const fallbackPdfPath = document.getElementById('fallbackPdfPath')?.value.trim() || '';
     
     if (!name || !date) {
         showError('Event name and date are required.');
@@ -1464,7 +1466,7 @@ async function createEvent() {
         const eventResponse = await fetch('/api/events', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ name, date, description })
+            body: JSON.stringify({ name, date, description, merged_pdf_path: mergedPdfPath, fallback_pdf_path: fallbackPdfPath })
         });
         
         if (!eventResponse.ok) {
